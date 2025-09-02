@@ -1,7 +1,227 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Upload, Send, MessageCircle, BarChart3, Network, TestTube, Settings, FileText, AlertCircle, CheckCircle, Clock } from 'lucide-react';
+import * as d3 from 'd3';
 
 const API_BASE = 'http://localhost:8000/api';
+
+
+const ResourceGraph = () => {
+  const svgRef = useRef();
+
+  useEffect(() => {
+    fetchAndRenderData();
+  }, []);
+
+  const fetchAndRenderData = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/resource-usage');
+      const data = await response.json();
+      renderGraph(data);
+    } catch (error) {
+      console.error('Error fetching resource data:', error);
+    }
+  };
+
+  const renderGraph = (data) => {
+    const margin = { top: 20, right: 30, bottom: 30, left: 60 };
+    const width = 800 - margin.left - margin.right;
+    const height = 400 - margin.top - margin.bottom;
+
+    // Clear existing content
+    d3.select(svgRef.current).selectAll("*").remove();
+
+    const svg = d3.select(svgRef.current)
+      .attr('width', width + margin.left + margin.right)
+      .attr('height', height + margin.top + margin.bottom)
+      .append('g')
+      .attr('transform', `translate(${margin.left},${margin.top})`);
+
+    // Create scales
+    const xScale = d3.scaleLinear()
+      .domain([0, d3.max(data.time)])
+      .range([0, width]);
+
+    const yScaleCPU = d3.scaleLinear()
+      .domain([0, d3.max(data.cpu)])
+      .range([height, 0]);
+
+    const yScaleMemory = d3.scaleLinear()
+      .domain([0, d3.max(data.memory)])
+      .range([height, 0]);
+
+    // Create lines
+    const cpuLine = d3.line()
+      .x((d, i) => xScale(data.time[i]))
+      .y(d => yScaleCPU(d));
+
+    const memoryLine = d3.line()
+      .x((d, i) => xScale(data.time[i]))
+      .y(d => yScaleMemory(d));
+
+    // Add CPU line
+    svg.append('path')
+      .datum(data.cpu)
+      .attr('fill', 'none')
+      .attr('stroke', '#ff4444')
+      .attr('stroke-width', 1.5)
+      .attr('d', cpuLine);
+
+    // Add memory line
+    svg.append('path')
+      .datum(data.memory)
+      .attr('fill', 'none')
+      .attr('stroke', '#4444ff')
+      .attr('stroke-width', 1.5)
+      .attr('d', memoryLine);
+
+    // Add axes
+    svg.append('g')
+      .attr('transform', `translate(0,${height})`)
+      .call(d3.axisBottom(xScale)
+        .tickFormat(d => `${(d/1000).toFixed(1)}s`));
+
+    svg.append('g')
+      .call(d3.axisLeft(yScaleCPU));
+
+    // Add legend
+    const legend = svg.append('g')
+      .attr('transform', `translate(${width - 100}, 0)`);
+
+    legend.append('rect')
+      .attr('x', 0)
+      .attr('y', 0)
+      .attr('width', 10)
+      .attr('height', 10)
+      .attr('fill', '#ff4444');
+
+    legend.append('text')
+      .attr('x', 15)
+      .attr('y', 10)
+      .text('CPU Usage');
+
+    legend.append('rect')
+      .attr('x', 0)
+      .attr('y', 20)
+      .attr('width', 10)
+      .attr('height', 10)
+      .attr('fill', '#4444ff');
+
+    legend.append('text')
+      .attr('x', 15)
+      .attr('y', 30)
+      .text('Memory Usage');
+  };
+
+  return (
+    <div className="resource-graph">
+      <h2>Build Resource Usage</h2>
+      <svg ref={svgRef}></svg>
+    </div>
+  );
+};
+
+const BuildGraph = () => {
+  const [graphData, setGraphData] = useState(null);
+
+  useEffect(() => {
+    fetch('http://localhost:8000/api/graph')
+      .then(response => response.json())
+      .then(data => {
+        console.log('Graph data:', data); // Debug log
+        setGraphData(data);
+        if (data.nodes.length > 0) {
+          renderGraph(data);
+        }
+      })
+      .catch(error => console.error('Error fetching graph data:', error));
+  }, []);
+
+  const renderGraph = (data) => {
+    const width = 800;
+    const height = 600;
+
+    // Clear any existing SVG
+    d3.select('#graph-container').selectAll('*').remove();
+
+    const svg = d3.select('#graph-container')
+      .append('svg')
+      .attr('width', width)
+      .attr('height', height);
+
+    // Create force simulation
+    const simulation = d3.forceSimulation(data.nodes)
+      .force('link', d3.forceLink(data.edges).id(d => d.id))
+      .force('charge', d3.forceManyBody().strength(-100))
+      .force('center', d3.forceCenter(width / 2, height / 2));
+
+    // Add links
+    const link = svg.append('g')
+      .selectAll('line')
+      .data(data.edges)
+      .enter()
+      .append('line')
+      .attr('stroke', '#999')
+      .attr('stroke-opacity', 0.6);
+
+    // Add nodes
+    const node = svg.append('g')
+      .selectAll('circle')
+      .data(data.nodes)
+      .enter()
+      .append('circle')
+      .attr('r', 5)
+      .attr('fill', d => {
+        switch (d.type) {
+          case 'target': return d.status === 'success' ? '#4CAF50' : '#f44336';
+          case 'test': return d.status === 'passed' ? '#2196F3' : '#FF9800';
+          default: return '#9E9E9E';
+        }
+      });
+
+    // Add labels
+    const label = svg.append('g')
+      .selectAll('text')
+      .data(data.nodes)
+      .enter()
+      .append('text')
+      .text(d => d.label)
+      .attr('font-size', 8)
+      .attr('dx', 8)
+      .attr('dy', 3);
+
+    // Update positions on simulation tick
+    simulation.on('tick', () => {
+      link
+        .attr('x1', d => d.source.x)
+        .attr('y1', d => d.source.y)
+        .attr('x2', d => d.target.x)
+        .attr('y2', d => d.target.y);
+
+      node
+        .attr('cx', d => d.x)
+        .attr('cy', d => d.y);
+
+      label
+        .attr('x', d => d.x)
+        .attr('y', d => d.y);
+    });
+  };
+
+   return (
+    <div>
+      <h2>Build Dependency Graph</h2>
+      <div id="graph-container"></div>
+      {graphData && (
+        <div className="graph-stats">
+          <p>Targets: {graphData.metadata.totalTargets}</p>
+          <p>Tests: {graphData.metadata.totalTests}</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+
 
 // Graph visualization component using D3.js concepts with React
 const GraphVisualization = ({ nodes, edges, selectedNode, onNodeClick }) => {
@@ -468,6 +688,10 @@ const BazelChatViz = () => {
           <h1 className="text-4xl font-bold text-gray-900 mb-2">Bazel ChatViz</h1>
           <p className="text-gray-600">Visualize and chat with your Bazel builds</p>
         </div>
+
+        {/* <BuildGraph /> */}
+
+        <ResourceGraph />
 
         {/* File Upload */}
         <FileUploader 

@@ -48,7 +48,7 @@ class BazelTarget:
     dependencies: List[str] = None
     outputs: List[str] = None
 
-    def _post_init_(self):
+    def _post_init__(self):
         if self.dependencies is None:
             self.dependencies = []
         if self.outputs is None:
@@ -56,7 +56,7 @@ class BazelTarget:
 
 class BEPParser:
     
-    def __init_(self):
+    def __init__(self):
         self.targets: Dict[str, BazelTarget] = {}
         self.actions: Dict[str, Dict] = {}
         self.test_results: Dict[str, Dict] = {}
@@ -80,23 +80,25 @@ class BEPParser:
     def _process_event(self, event: Dict) -> None:
         event_id = event.get('id', {})
 
-        if 'targetCompleted' in event:
-            self._process_target_completed(event)
-        elif 'actionExecuted' in event:
-            self._process_action_executed(event)
-        elif 'testResult' in event:
-            self._process_test_result(event)
-        elif 'buildMetadata' in event:
-            self._process_build_metadata(event)
+        if 'targetCompleted' in event_id:
+            self._process_target_completed(event_id['targetCompleted'])
+        elif 'actionExecuted' in event_id:
+            self._process_action_executed(event_id['actionExecuted'])
+        elif 'testResult' in event_id:
+            self._process_test_result(event_id['testResult'])
+        elif 'buildMetadata' in event_id:
+            self._process_build_metadata(event_id['buildMetadata'])
+        # elif 'targetConfigured' in event_id:
+        #     # Optional: track configured targets if needed
+        #     self._process_target_configured(event_id['targetConfigured'])
 
-    def _process_target_completed(self, event: Dict) -> None:
-        target_completed = event.get('targetCompleted', {})
+    def _process_target_completed(self, target_completed: Dict) -> None:
         target_label = target_completed.get('label', 'unknown')
         success = target_completed.get('success', False)
 
         self.targets[target_label] = BazelTarget(
-            name = target_label,
-            status = 'success' if success else 'failed'
+            name=target_label,
+            status='success' if success else 'failed'
         )
     
     def _process_action_executed(self, event: Dict) -> None:
@@ -384,6 +386,30 @@ app.add_middleware(
 async def root():
     return {"message": "Bazel ChatViz API is running"}
 
+@app.get("/api/resource-usage")
+async def get_resource_usage():
+    """Get resource usage data from BEP"""
+    resource_data = {
+        "cpu": [],
+        "memory": [],
+        "time": []
+    }
+
+    for event in bep_parser.events:
+        if "progress" in event:
+            timestamp = event.get("timeMillis", 0)
+            resource_data["time"].append(timestamp)
+
+            # Extract CPU and memory usage if available
+            if "resourceUsage" in event:
+                cpu = event["resourceUsage"].get("cpuUsage", 0)
+                memory = event["resourceUsage"].get("memoryUsage", 0)
+                resource_data["cpu"].append(cpu)
+                resource_data["memory"].append(memory)
+                
+    return resource_data
+
+
 @app.post("/api/load-bep")
 async def load_bep(file: UploadFile = File(...)):
     """Load BEP JSON file"""
@@ -421,35 +447,59 @@ async def get_graph():
     nodes = []
     edges = []
     
-    # Convert targets to graph nodes
+    # Convert targets to graph nodes with improved attributes
     for target_name, target in bep_parser.targets.items():
+        node_id = target_name.replace('/', '_').replace(':', '_')  # Sanitize ID
         nodes.append({
-            "id": target_name,
+            "id": node_id,
+            "originalId": target_name,
             "label": target_name.split("/")[-1],
             "type": "target",
-            "status": target.status
+            "status": target.status,
+            "group": target_name.split("/")[1] if len(target_name.split("/")) > 1 else "root"
         })
+        
+        # Add dependency edges
+        if hasattr(target, 'dependencies') and target.dependencies:
+            for dep in target.dependencies:
+                dep_id = dep.replace('/', '_').replace(':', '_')
+                edges.append({
+                    "id": f"{node_id}-{dep_id}",
+                    "source": node_id,
+                    "target": dep_id,
+                    "type": "dependency"
+                })
     
-    # Add test nodes
+    # Add test nodes with connections to their targets
     for test_name, test_data in bep_parser.test_results.items():
+        node_id = test_name.replace('/', '_').replace(':', '_')
         nodes.append({
-            "id": test_name,
+            "id": node_id,
+            "originalId": test_name,
             "label": test_name.split("/")[-1],
             "type": "test",
-            "status": "success" if test_data.get('passed', False) else "failed"
+            "status": "passed" if test_data.get('passed', False) else "failed",
+            "group": test_name.split("/")[1] if len(test_name.split("/")) > 1 else "tests"
+        })
+        
+        # Connect test to its target
+        target_id = test_name.replace('/', '_').replace(':', '_').replace('_test', '')
+        edges.append({
+            "id": f"{node_id}-{target_id}",
+            "source": node_id,
+            "target": target_id,
+            "type": "test"
         })
     
-    # Add action nodes (limited)
-    for action_id, action_data in list(bep_parser.actions.items())[:50]:  # Limit for performance
-        nodes.append({
-            "id": action_id,
-            "label": action_data.get('mnemonic', 'action'),
-            "type": "action",
-            "status": action_data.get('status', 'unknown'),
-            "execution_time": action_data.get('execution_time', 0)
-        })
-    
-    return {"nodes": nodes, "edges": edges}
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "metadata": {
+            "totalTargets": len(bep_parser.targets),
+            "totalTests": len(bep_parser.test_results),
+            "groups": list(set(node["group"] for node in nodes))
+        }
+    }
 
 @app.post("/api/chat")
 async def chat(request: ChatRequest):
