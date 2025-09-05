@@ -2,123 +2,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Upload, Send, MessageCircle, BarChart3, Network, TestTube, Settings, FileText, AlertCircle, CheckCircle, Clock } from 'lucide-react';
 import * as d3 from 'd3';
 
+import ResourceGraph from './ResourceGraph';
+
 const API_BASE = 'http://localhost:8000/api';
 
 
-const ResourceGraph = () => {
-  const svgRef = useRef();
 
-  useEffect(() => {
-    fetchAndRenderData();
-  }, []);
-
-  const fetchAndRenderData = async () => {
-    try {
-      const response = await fetch('http://localhost:8000/api/resource-usage');
-      const data = await response.json();
-      renderGraph(data);
-    } catch (error) {
-      console.error('Error fetching resource data:', error);
-    }
-  };
-
-  const renderGraph = (data) => {
-    const margin = { top: 20, right: 30, bottom: 30, left: 60 };
-    const width = 800 - margin.left - margin.right;
-    const height = 400 - margin.top - margin.bottom;
-
-    // Clear existing content
-    d3.select(svgRef.current).selectAll("*").remove();
-
-    const svg = d3.select(svgRef.current)
-      .attr('width', width + margin.left + margin.right)
-      .attr('height', height + margin.top + margin.bottom)
-      .append('g')
-      .attr('transform', `translate(${margin.left},${margin.top})`);
-
-    // Create scales
-    const xScale = d3.scaleLinear()
-      .domain([0, d3.max(data.time)])
-      .range([0, width]);
-
-    const yScaleCPU = d3.scaleLinear()
-      .domain([0, d3.max(data.cpu)])
-      .range([height, 0]);
-
-    const yScaleMemory = d3.scaleLinear()
-      .domain([0, d3.max(data.memory)])
-      .range([height, 0]);
-
-    // Create lines
-    const cpuLine = d3.line()
-      .x((d, i) => xScale(data.time[i]))
-      .y(d => yScaleCPU(d));
-
-    const memoryLine = d3.line()
-      .x((d, i) => xScale(data.time[i]))
-      .y(d => yScaleMemory(d));
-
-    // Add CPU line
-    svg.append('path')
-      .datum(data.cpu)
-      .attr('fill', 'none')
-      .attr('stroke', '#ff4444')
-      .attr('stroke-width', 1.5)
-      .attr('d', cpuLine);
-
-    // Add memory line
-    svg.append('path')
-      .datum(data.memory)
-      .attr('fill', 'none')
-      .attr('stroke', '#4444ff')
-      .attr('stroke-width', 1.5)
-      .attr('d', memoryLine);
-
-    // Add axes
-    svg.append('g')
-      .attr('transform', `translate(0,${height})`)
-      .call(d3.axisBottom(xScale)
-        .tickFormat(d => `${(d/1000).toFixed(1)}s`));
-
-    svg.append('g')
-      .call(d3.axisLeft(yScaleCPU));
-
-    // Add legend
-    const legend = svg.append('g')
-      .attr('transform', `translate(${width - 100}, 0)`);
-
-    legend.append('rect')
-      .attr('x', 0)
-      .attr('y', 0)
-      .attr('width', 10)
-      .attr('height', 10)
-      .attr('fill', '#ff4444');
-
-    legend.append('text')
-      .attr('x', 15)
-      .attr('y', 10)
-      .text('CPU Usage');
-
-    legend.append('rect')
-      .attr('x', 0)
-      .attr('y', 20)
-      .attr('width', 10)
-      .attr('height', 10)
-      .attr('fill', '#4444ff');
-
-    legend.append('text')
-      .attr('x', 15)
-      .attr('y', 30)
-      .text('Memory Usage');
-  };
-
-  return (
-    <div className="resource-graph">
-      <h2>Build Resource Usage</h2>
-      <svg ref={svgRef}></svg>
-    </div>
-  );
-};
 
 const BuildGraph = () => {
   const [graphData, setGraphData] = useState(null);
@@ -691,7 +580,7 @@ const BazelChatViz = () => {
 
         {/* <BuildGraph /> */}
 
-        <ResourceGraph />
+         <ResourceGraph />
 
         {/* File Upload */}
         <FileUploader 

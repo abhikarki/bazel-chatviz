@@ -1,563 +1,422 @@
 import json
-import re
 import os
-import sys
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Tuple
-from dataclasses import dataclass
-from datetime import datetime
+from typing import Any, Dict, List, Optional, Set, Tuple
 
-from fastapi import FastAPI, HTTPException, UploadFile, File
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 import uvicorn
 
 
-class ChatRequest(BaseModel):
-    question: str
-    context: Optional[Dict] = None
-
-class ChatResponse(BaseModel):
-    answer: str
-    graph_nodes: Optional[List[Dict]] = None
-    graph_edges: Optional[List[Dict]] = None
-    metadata: Optional[Dict] = None
-
-class GraphNode(BaseModel):
-    id: str
-    label: str
-    type: str
-    status: str
-    execution_time: Optional[float] = None
-    metadata: Optional[Dict] = None
-
-class GraphEdge(BaseModel):
-    source: str
-    target: str
-    type: str
+# =========
+# Data types
+# =========
 
 @dataclass
-class BazelTarget:
-    name: str
-    status: str
-    execution_time: float = 0.0
-    cache_result: str = "unknown"
-    test_result: Optional[str] = None
-    dependencies: List[str] = None
-    outputs: List[str] = None
+class Target:
+    label: str
+    status: str = "unknown"           # "unknown" | "success" | "failure"
+    kind: Optional[str] = None
+    dependencies: Set[str] = field(default_factory=set)
 
-    def _post_init__(self):
-        if self.dependencies is None:
-            self.dependencies = []
-        if self.outputs is None:
-            self.outputs = []
+
+# ======================
+# BEP parser (defensive)
+# ======================
 
 class BEPParser:
-    
-    def __init__(self):
-        self.targets: Dict[str, BazelTarget] = {}
-        self.actions: Dict[str, Dict] = {}
-        self.test_results: Dict[str, Dict] = {}
-        self.build_metadata: Dict = {}
+    """
+    Minimal, robust BEP parser for:
+      - Resource-usage time series (best-effort)
+      - Dependency graph (best-effort from configured events)
+      - Target completion status
+      - Test results
+
+    Design notes:
+      • Bazel BEP events are JSON objects, one per line.
+      • The event *type* is indicated by keys under event["id"] (e.g., "targetCompleted", "progress", "testResult", "configuredTarget", etc).
+      • The detailed payload typically lives in a sibling field (e.g., "completed", "progress", "testResult", "configured", "buildMetrics", ...).
+      • Different Bazel versions may vary; we code defensively and ignore what we don’t recognize.
+    """
+
+    def __init__(self) -> None:
+        self.events: List[Dict[str, Any]] = []
+
+        # Graph/targets/tests/action counts
+        self.targets: Dict[str, Target] = {}
+        self.test_results: Dict[str, Dict[str, Any]] = {}
+        self.action_count: int = 0
+
+        # Resource series (best effort)
+        # time: milliseconds (if available); cpu/memory: numeric (unit depends on Bazel version)
+        self.resource_series: List[Dict[str, Optional[float]]] = []
+
+    # --------- Public API ---------
+
+    def reset(self) -> None:
+        self.__init__()
 
     def parse_file(self, bep_file_path: str) -> None:
         if not os.path.exists(bep_file_path):
             raise FileNotFoundError(f"BEP file not found: {bep_file_path}")
-        
-        with open(bep_file_path, 'r') as f:
+
+        self.reset()
+        with open(bep_file_path, "r", encoding="utf-8") as f:
             for line in f:
-                if line.strip():
-                    try:
-                        event = json.loads(line)
-                        self._process_event(event)
-                    except json.JSONDecodeError as e:
-                        print(f"Warning: Failed to parse BEP line: {e}")
-                        continue
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    # Skip bad lines but don’t crash the whole parse
+                    continue
+                self.events.append(event)
+                self._process_event(event)
 
+    # --------- Internals ---------
 
-    def _process_event(self, event: Dict) -> None:
-        event_id = event.get('id', {})
+    def _process_event(self, event: Dict[str, Any]) -> None:
+        # Determine event kind by looking inside event["id"]
+        event_id = event.get("id", {})
+        if not isinstance(event_id, dict):
+            return
 
-        if 'targetCompleted' in event_id:
-            self._process_target_completed(event_id['targetCompleted'])
-        elif 'actionExecuted' in event_id:
-            self._process_action_executed(event_id['actionExecuted'])
-        elif 'testResult' in event_id:
-            self._process_test_result(event_id['testResult'])
-        elif 'buildMetadata' in event_id:
-            self._process_build_metadata(event_id['buildMetadata'])
-        # elif 'targetConfigured' in event_id:
-        #     # Optional: track configured targets if needed
-        #     self._process_target_configured(event_id['targetConfigured'])
+        # We’ll check for known id keys and route accordingly.
+        if "targetCompleted" in event_id:
+            self._handle_target_completed(event, event_id["targetCompleted"])
+        elif "configuredTarget" in event_id or "targetConfigured" in event_id:
+            # Some Bazel versions use "configuredTarget", others "targetConfigured".
+            configured = event_id.get("configuredTarget") or event_id.get("targetConfigured")
+            self._handle_target_configured(event, configured)
+        elif "actionCompleted" in event_id or "actionExecuted" in event_id:
+            self._handle_action(event)
+        elif "testResult" in event_id:
+            self._handle_test_result(event, event_id["testResult"])
+        elif "progress" in event_id:
+            self._handle_progress(event)
+        elif "buildMetrics" in event:
+            # Sometimes buildMetrics arrive with a generic id; still try to extract.
+            self._handle_build_metrics(event)
 
-    def _process_target_completed(self, target_completed: Dict) -> None:
-        target_label = target_completed.get('label', 'unknown')
-        success = target_completed.get('success', False)
+        # Try resource extraction on any event (no-op if nothing present).
+        self._maybe_extract_resource_point(event)
 
-        self.targets[target_label] = BazelTarget(
-            name=target_label,
-            status='success' if success else 'failed'
-        )
-    
-    def _process_action_executed(self, event: Dict) -> None:
-        """Process action execution event"""
-        action = event.get('actionExecuted', {})
-        action_id = str(action.get('label', 'unknown'))
-        
-        self.actions[action_id] = {
-            'status': 'success' if action.get('success', False) else 'failed',
-            'execution_time': action.get('executionTimeInMs', 0) / 1000.0,
-            'cache_result': action.get('cacheResult', 'unknown'),
-            'mnemonic': action.get('type', 'unknown')
+    # ---- handlers ----
+
+    def _handle_target_completed(self, event: Dict[str, Any], id_payload: Dict[str, Any]) -> None:
+        label = id_payload.get("label")
+        if not label:
+            return
+        # The details are commonly in event["completed"] with "success": true/false
+        details = event.get("completed", {}) or event.get("targetCompleted", {}) or {}
+        success = bool(details.get("success", False))
+        t = self.targets.get(label) or Target(label=label)
+        t.status = "success" if success else "failure"
+        # keep kind/deps if already recorded earlier
+        self.targets[label] = t
+
+    def _handle_target_configured(self, event: Dict[str, Any], id_payload: Dict[str, Any]) -> None:
+        """
+        Try to pull:
+          - label (string)
+          - kind (string)
+          - dependencies (list of labels) if present under a "configured" payload
+        """
+        label = id_payload.get("label")
+        if not label:
+            return
+
+        t = self.targets.get(label) or Target(label=label)
+
+        # Commonly found in event["configured"], but we’ll also probe event["targetConfigured"]
+        configured_payload = event.get("configured") or event.get("targetConfigured") or {}
+        # target kind
+        kind = configured_payload.get("targetKind") or configured_payload.get("kind")
+        if kind:
+            t.kind = kind
+
+        # Dependencies are not always included in BEP; if present, they might live as a list of labels
+        # under fields like "deps", "dependencies", or nested structures. We’ll be permissive:
+        # Example shapes we’ll accept:
+        #   {"configured": {"deps": ["//pkg:dep1","//pkg:dep2"]}}
+        #   {"configured": {"dependencies": [{"label":"//pkg:dep"}]}}
+        deps = set()
+
+        # Case 1: simple list of strings
+        for key in ("deps", "dependencies"):
+            value = configured_payload.get(key)
+            if isinstance(value, list):
+                for v in value:
+                    if isinstance(v, str):
+                        deps.add(v)
+                    elif isinstance(v, dict) and "label" in v:
+                        deps.add(v["label"])
+
+        # Assign if found
+        if deps:
+            t.dependencies.update(deps)
+
+        self.targets[label] = t
+
+    def _handle_action(self, event: Dict[str, Any]) -> None:
+        # We don’t build a full action graph here; just count them
+        self.action_count += 1
+
+    def _handle_test_result(self, event: Dict[str, Any], id_payload: Dict[str, Any]) -> None:
+        """
+        testResult id payload usually contains the target label for the test.
+        The detailed payload is usually in event["testResult"] with status.
+        """
+        label = id_payload.get("label")
+        if not label:
+            return
+
+        payload = event.get("testResult", {})
+        # Many BEP variants use "status": "PASSED"|"FAILED"|"FLAKY"|...
+        status = (payload.get("status") or "").lower()
+        passed = status in ("passed", "pass", "success", "ok")
+
+        self.test_results[label] = {
+            "status": status,
+            "passed": passed,
+            "run": payload.get("run", 0),
+            "attempt": payload.get("attempt", 0),
         }
-    
-    def _process_test_result(self, event: Dict) -> None:
-        """Process test result event"""
-        test_result = event.get('testResult', {})
-        test_label = test_result.get('label', 'unknown')
-        
-        self.test_results[test_label] = {
-            'status': test_result.get('status', 'unknown'),
-            'execution_time': test_result.get('executionTimeInMs', 0) / 1000.0,
-            'passed': test_result.get('testResult', {}).get('status') == 'PASSED'
-        }
-    
-    def _process_build_metadata(self, event: Dict) -> None:
-        """Process build metadata"""
-        self.build_metadata = event.get('buildMetadata', {})
 
-class ChatEngine:
-    """Rule-based chat engine for Bazel build queries"""
-    
-    def __init__(self, bep_parser: BEPParser):
-        self.bep_parser = bep_parser
-        
-        # Define query patterns and handlers
-        self.patterns = [
-            (r'.*\b(dep|depend|dependency|dependencies)\b.*', self._handle_dependencies),
-            (r'.*\b(fail|failed|error)\b.*', self._handle_failures),
-            (r'.*\b(test|testing)\b.*', self._handle_tests),
-            (r'.*\b(cache|cached|rebuild|rebuilt)\b.*', self._handle_cache),
-            (r'.*\b(time|slow|performance)\b.*', self._handle_performance),
-            (r'.*\b(target|targets)\b.*', self._handle_targets),
-            (r'.*\b(summary|overview|stats)\b.*', self._handle_summary),
-        ]
-    
-    def query(self, question: str) -> ChatResponse:
-        """Process natural language query"""
-        question_lower = question.lower().strip()
-        
-        # Try to match patterns
-        for pattern, handler in self.patterns:
-            if re.match(pattern, question_lower):
-                return handler(question)
-        
-        # Default response
-        return ChatResponse(
-            answer="I can help you analyze your Bazel build. Try asking about dependencies, failures, tests, cache hits/misses, or performance.",
-            metadata={"suggestions": [
-                "Show me failed targets",
-                "What are the dependencies of //my:target?",
-                "Which tests failed?",
-                "Why was X rebuilt?",
-                "Show build performance summary"
-            ]}
-        )
-    
-    def _handle_dependencies(self, question: str) -> ChatResponse:
-        """Handle dependency-related queries"""
-        # Extract target name if mentioned
-        target_match = re.search(r'//[a-zA-Z0-9_/:-]+', question)
-        
-        nodes = []
-        edges = []
-        answer = ""
-        
-        if target_match:
-            target = target_match.group(0)
-            if target in self.bep_parser.targets:
-                # Create dependency graph for specific target
-                nodes.append({
-                    "id": target,
-                    "label": target.split("/")[-1],
-                    "type": "target",
-                    "status": self.bep_parser.targets[target].status
-                })
-                answer = f"Showing dependencies for {target}"
-            else:
-                answer = f"Target {target} not found in build data"
-        else:
-            # Show all targets and their relationships
-            for target_name, target in self.bep_parser.targets.items():
-                nodes.append({
-                    "id": target_name,
-                    "label": target_name.split("/")[-1],
-                    "type": "target",
-                    "status": target.status
-                })
-            answer = f"Found {len(nodes)} targets in build"
-        
-        return ChatResponse(
-            answer=answer,
-            graph_nodes=nodes,
-            graph_edges=edges
-        )
-    
-    def _handle_failures(self, question: str) -> ChatResponse:
-        """Handle failure-related queries"""
-        failed_targets = [name for name, target in self.bep_parser.targets.items() 
-                         if target.status == 'failed']
-        failed_actions = [action_id for action_id, action in self.bep_parser.actions.items()
-                         if action['status'] == 'failed']
-        failed_tests = [test_id for test_id, test in self.bep_parser.test_results.items()
-                       if not test.get('passed', True)]
-        
-        total_failures = len(failed_targets) + len(failed_actions) + len(failed_tests)
-        
-        if total_failures == 0:
-            return ChatResponse(answer="Great news! No failures found in this build.")
-        
-        answer_parts = []
-        if failed_targets:
-            answer_parts.append(f"{len(failed_targets)} targets failed")
-        if failed_actions:
-            answer_parts.append(f"{len(failed_actions)} actions failed")
-        if failed_tests:
-            answer_parts.append(f"{len(failed_tests)} tests failed")
-        
-        answer = "Build failures: " + ", ".join(answer_parts)
-        
-        # Create nodes for failed items
-        nodes = []
-        for target in failed_targets[:10]:  # Limit to first 10
-            nodes.append({
-                "id": target,
-                "label": target.split("/")[-1],
-                "type": "target",
-                "status": "failed"
-            })
-        
-        return ChatResponse(
-            answer=answer,
-            graph_nodes=nodes,
-            metadata={"failed_targets": failed_targets, "failed_tests": failed_tests}
-        )
-    
-    def _handle_tests(self, question: str) -> ChatResponse:
-        """Handle test-related queries"""
-        total_tests = len(self.bep_parser.test_results)
-        passed_tests = sum(1 for test in self.bep_parser.test_results.values() 
-                          if test.get('passed', False))
-        failed_tests = total_tests - passed_tests
-        
-        if total_tests == 0:
-            return ChatResponse(answer="No test results found in build data")
-        
-        answer = f"Test Results: {passed_tests} passed, {failed_tests} failed out of {total_tests} total"
-        
-        # Create nodes for test results
-        nodes = []
-        for test_name, test_data in self.bep_parser.test_results.items():
-            nodes.append({
-                "id": test_name,
-                "label": test_name.split("/")[-1],
-                "type": "test",
-                "status": "success" if test_data.get('passed', False) else "failed"
-            })
-        
-        return ChatResponse(
-            answer=answer,
-            graph_nodes=nodes,
-            metadata={"test_summary": {"total": total_tests, "passed": passed_tests, "failed": failed_tests}}
-        )
-    
-    def _handle_cache(self, question: str) -> ChatResponse:
-        """Handle cache-related queries"""
-        cache_hits = sum(1 for action in self.bep_parser.actions.values() 
-                        if action.get('cache_result') == 'hit')
-        cache_misses = sum(1 for action in self.bep_parser.actions.values() 
-                          if action.get('cache_result') == 'miss')
-        
-        total_actions = len(self.bep_parser.actions)
-        if total_actions == 0:
-            return ChatResponse(answer="No action execution data found")
-        
-        cache_hit_rate = (cache_hits / total_actions) * 100 if total_actions > 0 else 0
-        
-        answer = f"Cache Performance: {cache_hits} hits, {cache_misses} misses ({cache_hit_rate:.1f}% hit rate)"
-        
-        return ChatResponse(
-            answer=answer,
-            metadata={"cache_stats": {"hits": cache_hits, "misses": cache_misses, "hit_rate": cache_hit_rate}}
-        )
-    
-    def _handle_performance(self, question: str) -> ChatResponse:
-        """Handle performance-related queries"""
-        if not self.bep_parser.actions:
-            return ChatResponse(answer="No performance data available")
-        
-        execution_times = [action.get('execution_time', 0) for action in self.bep_parser.actions.values()]
-        total_time = sum(execution_times)
-        max_time = max(execution_times) if execution_times else 0
-        avg_time = total_time / len(execution_times) if execution_times else 0
-        
-        answer = f"Build Performance: Total execution time {total_time:.2f}s, Average {avg_time:.2f}s, Slowest action {max_time:.2f}s"
-        
-        return ChatResponse(
-            answer=answer,
-            metadata={"performance": {"total_time": total_time, "avg_time": avg_time, "max_time": max_time}}
-        )
-    
-    def _handle_targets(self, question: str) -> ChatResponse:
-        """Handle target-related queries"""
-        total_targets = len(self.bep_parser.targets)
-        successful_targets = sum(1 for target in self.bep_parser.targets.values() 
-                               if target.status == 'success')
-        
-        answer = f"Build Targets: {successful_targets}/{total_targets} succeeded"
-        
-        nodes = []
-        for target_name, target in list(self.bep_parser.targets.items())[:20]:  # Limit to first 20
-            nodes.append({
-                "id": target_name,
-                "label": target_name.split("/")[-1],
-                "type": "target",
-                "status": target.status
-            })
-        
-        return ChatResponse(
-            answer=answer,
-            graph_nodes=nodes
-        )
-    
-    def _handle_summary(self, question: str) -> ChatResponse:
-        """Handle summary/overview queries"""
-        total_targets = len(self.bep_parser.targets)
-        successful_targets = sum(1 for target in self.bep_parser.targets.values() 
-                               if target.status == 'success')
-        total_tests = len(self.bep_parser.test_results)
-        passed_tests = sum(1 for test in self.bep_parser.test_results.values() 
-                          if test.get('passed', False))
-        
-        summary_parts = [
-            f"Targets: {successful_targets}/{total_targets} succeeded",
-        ]
-        
-        if total_tests > 0:
-            summary_parts.append(f"Tests: {passed_tests}/{total_tests} passed")
-        
-        if self.bep_parser.actions:
-            cache_hits = sum(1 for action in self.bep_parser.actions.values() 
-                            if action.get('cache_result') == 'hit')
-            total_actions = len(self.bep_parser.actions)
-            cache_rate = (cache_hits / total_actions) * 100 if total_actions > 0 else 0
-            summary_parts.append(f"Cache hit rate: {cache_rate:.1f}%")
-        
-        answer = "Build Summary: " + ", ".join(summary_parts)
-        
-        return ChatResponse(
-            answer=answer,
-            metadata={
-                "summary": {
-                    "targets": {"total": total_targets, "successful": successful_targets},
-                    "tests": {"total": total_tests, "passed": passed_tests} if total_tests > 0 else None,
-                    "actions": len(self.bep_parser.actions)
+        # Optionally reflect result onto the target
+        t = self.targets.get(label) or Target(label=label)
+        if t.status == "unknown":
+            t.status = "success" if passed else "failure"
+        self.targets[label] = t
+
+    def _handle_progress(self, event: Dict[str, Any]) -> None:
+        # Some Bazel versions may stuff resource hints in a "progress" payload.
+        # We don’t need to do anything special here beyond letting _maybe_extract_resource_point run.
+        return
+
+    def _handle_build_metrics(self, event: Dict[str, Any]) -> None:
+        # Metrics sometimes appear here (e.g., memory), but extraction is centralized below.
+        return
+
+    # ---- resource extraction (best-effort, tolerant) ----
+
+    def _maybe_extract_resource_point(self, event: Dict[str, Any]) -> None:
+        """
+        Bazel’s BEP does not have a single canonical resource-usage schema across all versions.
+        We attempt multiple plausible places/keys and store whatever we find:
+
+          time_ms: event.get("timeMillis") | event.get("timestamp") | None
+          cpu:  event["progress"]["resourceUsage"]["cpuUsage"] | event["buildMetrics"]["timingMetrics"]["cpu"] | ...
+          mem:  event["progress"]["resourceUsage"]["memoryUsage"] | event["buildMetrics"]["memoryMetrics"]["peak"] | ...
+
+        If none are found, we skip the point.
+        """
+        get_num = lambda x: float(x) if isinstance(x, (int, float)) else None
+
+        # Timestamp: prefer timeMillis, then timestamp
+        time_ms = event.get("timeMillis")
+        if not isinstance(time_ms, (int, float)):
+            time_ms = event.get("timestamp")
+        time_ms = get_num(time_ms)
+
+        # Try a few likely nests for CPU/memory
+        cpu = None
+        mem = None
+
+        # progress.resourceUsage.{cpuUsage, memoryUsage}
+        progress = event.get("progress")
+        if isinstance(progress, dict):
+            ru = progress.get("resourceUsage")
+            if isinstance(ru, dict):
+                cpu = cpu or get_num(ru.get("cpuUsage") or ru.get("cpu") or ru.get("cpu_utilization"))
+                mem = mem or get_num(ru.get("memoryUsage") or ru.get("memory") or ru.get("mem"))
+
+        # buildMetrics.memoryMetrics.{peak, highWatermark, used}
+        bm = event.get("buildMetrics")
+        if isinstance(bm, dict):
+            mem_metrics = bm.get("memoryMetrics")
+            if isinstance(mem_metrics, dict):
+                mem = mem or get_num(
+                    mem_metrics.get("peak")
+                    or mem_metrics.get("highWatermark")
+                    or mem_metrics.get("used")
+                )
+            # timingMetrics might have CPU-ish hints (rare)
+            timing = bm.get("timingMetrics")
+            if isinstance(timing, dict):
+                cpu = cpu or get_num(
+                    timing.get("cpu") or timing.get("utilization") or timing.get("processTimeMs")
+                )
+                # If timing gives process time in ms and no timestamp, we still record.
+
+        # If we found anything meaningful, store it
+        if time_ms is not None or cpu is not None or mem is not None:
+            self.resource_series.append(
+                {
+                    "time": time_ms,
+                    "cpu": cpu,
+                    "memory": mem,
                 }
-            }
-        )
+            )
 
-# Global instances
+
+# =========
+# Web server
+# =========
+
 bep_parser = BEPParser()
-chat_engine = ChatEngine(bep_parser)
-app = FastAPI(title="Bazel ChatViz API", version="1.0.0")
+app = FastAPI(title="Bazel BEP Viz API", version="1.0.0")
 
-# Enable CORS for frontend
+# CORS: allow local dev frontends by default
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],  # React dev servers
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+        "*",  # loosen for local experiments; tighten for prod
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+
 @app.get("/")
 async def root():
-    return {"message": "Bazel ChatViz API is running"}
+    return {"message": "Bazel BEP Viz API is running"}
+
 
 @app.get("/api/resource-usage")
 async def get_resource_usage():
-    """Get resource usage data from BEP"""
-    resource_data = {
-        "cpu": [],
-        "memory": [],
-        "time": []
+    """
+    Returns a simple time series for resource usage. Because BEP formats vary,
+    any of time/cpu/memory can be None if Bazel didn't emit them.
+    """
+    # Already pre-extracted during parse; just return.
+    # To make it frontend-friendly, split into parallel arrays:
+    times: List[Optional[float]] = []
+    cpu: List[Optional[float]] = []
+    mem: List[Optional[float]] = []
+
+    for point in bep_parser.resource_series:
+        times += [point.get("time")]
+        cpu += [point.get("cpu")]
+        mem += [point.get("memory")]
+
+    return {
+        "time": times,
+        "cpu": cpu,
+        "memory": mem,
+        "count": len(times),
     }
 
-    for event in bep_parser.events:
-        if "progress" in event:
-            timestamp = event.get("timeMillis", 0)
-            resource_data["time"].append(timestamp)
-
-            # Extract CPU and memory usage if available
-            if "resourceUsage" in event:
-                cpu = event["resourceUsage"].get("cpuUsage", 0)
-                memory = event["resourceUsage"].get("memoryUsage", 0)
-                resource_data["cpu"].append(cpu)
-                resource_data["memory"].append(memory)
-                
-    return resource_data
-
-
-@app.post("/api/load-bep")
-async def load_bep(file: UploadFile = File(...)):
-    """Load BEP JSON file"""
-    try:
-        content = await file.read()
-        
-        # Save uploaded file temporarily
-        temp_path = f"/tmp/{file.filename}"
-        with open(temp_path, "wb") as f:
-            f.write(content)
-        
-        # Parse the BEP file
-        global bep_parser, chat_engine
-        bep_parser = BEPParser()
-        bep_parser.parse_file(temp_path)
-        chat_engine = ChatEngine(bep_parser)
-        
-        # Clean up temp file
-        os.unlink(temp_path)
-        
-        return {
-            "message": "BEP file loaded successfully",
-            "stats": {
-                "targets": len(bep_parser.targets),
-                "actions": len(bep_parser.actions),
-                "tests": len(bep_parser.test_results)
-            }
-        }
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to load BEP file: {str(e)}")
 
 @app.get("/api/graph")
 async def get_graph():
-    """Get dependency graph data"""
-    nodes = []
-    edges = []
-    
-    # Convert targets to graph nodes with improved attributes
-    for target_name, target in bep_parser.targets.items():
-        node_id = target_name.replace('/', '_').replace(':', '_')  # Sanitize ID
-        nodes.append({
-            "id": node_id,
-            "originalId": target_name,
-            "label": target_name.split("/")[-1],
-            "type": "target",
-            "status": target.status,
-            "group": target_name.split("/")[1] if len(target_name.split("/")) > 1 else "root"
-        })
-        
-        # Add dependency edges
-        if hasattr(target, 'dependencies') and target.dependencies:
-            for dep in target.dependencies:
-                dep_id = dep.replace('/', '_').replace(':', '_')
-                edges.append({
-                    "id": f"{node_id}-{dep_id}",
-                    "source": node_id,
-                    "target": dep_id,
-                    "type": "dependency"
-                })
-    
-    # Add test nodes with connections to their targets
-    for test_name, test_data in bep_parser.test_results.items():
-        node_id = test_name.replace('/', '_').replace(':', '_')
-        nodes.append({
-            "id": node_id,
-            "originalId": test_name,
-            "label": test_name.split("/")[-1],
-            "type": "test",
-            "status": "passed" if test_data.get('passed', False) else "failed",
-            "group": test_name.split("/")[1] if len(test_name.split("/")) > 1 else "tests"
-        })
-        
-        # Connect test to its target
-        target_id = test_name.replace('/', '_').replace(':', '_').replace('_test', '')
-        edges.append({
-            "id": f"{node_id}-{target_id}",
-            "source": node_id,
-            "target": target_id,
-            "type": "test"
-        })
-    
+    """
+    Dependency graph from best-effort BEP parsing:
+      nodes: targets + tests
+      edges: target dependency edges + test->target edges
+    """
+    nodes: List[Dict[str, Any]] = []
+    edges: List[Dict[str, Any]] = []
+
+    # Helper to make DOM-safe IDs
+    def safe_id(s: str) -> str:
+        return s.replace("/", "_").replace(":", "_")
+
+    # Target nodes
+    for label, target in bep_parser.targets.items():
+        gid_parts = label.split("/")
+        group = gid_parts[1] if len(gid_parts) > 1 else "root"
+
+        nodes.append(
+            {
+                "id": safe_id(label),
+                "originalId": label,
+                "label": label.split("/")[-1],
+                "type": "target",
+                "status": target.status,
+                "kind": target.kind,
+                "group": group,
+            }
+        )
+
+        # Dependencies
+        for dep in sorted(target.dependencies):
+            edges.append(
+                {
+                    "id": f"{safe_id(label)}-{safe_id(dep)}",
+                    "source": safe_id(label),
+                    "target": safe_id(dep),
+                    "type": "dependency",
+                }
+            )
+
+    # Test nodes and edges to their target (same label)
+    for test_label, test_data in bep_parser.test_results.items():
+        nodes.append(
+            {
+                "id": safe_id(test_label) + "__test",
+                "originalId": test_label,
+                "label": test_label.split("/")[-1],
+                "type": "test",
+                "status": "passed" if test_data.get("passed") else "failed",
+                "group": "tests",
+            }
+        )
+        # Connect test node to its corresponding target node (same label)
+        edges.append(
+            {
+                "id": f"{safe_id(test_label)}__test->{safe_id(test_label)}",
+                "source": safe_id(test_label) + "__test",
+                "target": safe_id(test_label),
+                "type": "test",
+            }
+        )
+
     return {
         "nodes": nodes,
         "edges": edges,
         "metadata": {
             "totalTargets": len(bep_parser.targets),
             "totalTests": len(bep_parser.test_results),
-            "groups": list(set(node["group"] for node in nodes))
-        }
+            "actionsSeen": bep_parser.action_count,
+            "groups": sorted({n["group"] for n in nodes}),
+        },
     }
 
-@app.post("/api/chat")
-async def chat(request: ChatRequest):
-    """Handle chat queries"""
-    try:
-        response = chat_engine.query(request.question)
-        return response
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Chat query failed: {str(e)}")
-
-@app.get("/api/tests")
-async def get_tests():
-    """Get test results"""
-    tests = []
-    for test_name, test_data in bep_parser.test_results.items():
-        tests.append({
-            "name": test_name,
-            "status": "passed" if test_data.get('passed', False) else "failed",
-            "execution_time": test_data.get('execution_time', 0)
-        })
-    
-    return {"tests": tests}
-
-@app.get("/api/stats")
-async def get_stats():
-    """Get build statistics"""
-    return {
-        "targets": len(bep_parser.targets),
-        "actions": len(bep_parser.actions),
-        "tests": len(bep_parser.test_results),
-        "successful_targets": sum(1 for t in bep_parser.targets.values() if t.status == 'success'),
-        "passed_tests": sum(1 for t in bep_parser.test_results.values() if t.get('passed', False))
-    }
 
 def main():
-    """Main entry point"""
     import argparse
-    
-    parser = argparse.ArgumentParser(description="Bazel ChatViz Backend Server")
-    parser.add_argument("--bep-file", type=str, help="BEP JSON file to load")
-    parser.add_argument("--port", type=int, default=8000, help="Port to run server on")
-    parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to bind server to")
-    
+
+    parser = argparse.ArgumentParser(description="Bazel BEP Visualization Backend")
+    parser.add_argument("--bep-file", type=str, help="Path to BEP JSONL file")
+    parser.add_argument("--port", type=int, default=8000, help="HTTP port")
+    parser.add_argument("--host", type=str, default="127.0.0.1", help="Bind host")
     args = parser.parse_args()
-    
-    # Load BEP file if provided
+
     if args.bep_file:
-        if os.path.exists(args.bep_file):
-            print(f"Loading BEP file: {args.bep_file}")
-            bep_parser.parse_file(args.bep_file)
-            global chat_engine
-            chat_engine = ChatEngine(bep_parser)
-            print(f"Loaded {len(bep_parser.targets)} targets, {len(bep_parser.actions)} actions, {len(bep_parser.test_results)} tests")
+        path = Path(args.bep_file)
+        if path.exists():
+            print(f"[BEP] Loading: {path}")
+            bep_parser.parse_file(str(path))
+            print(
+                f"[BEP] Loaded {len(bep_parser.targets)} targets, "
+                f"{bep_parser.action_count} actions, "
+                f"{len(bep_parser.test_results)} tests, "
+                f"{len(bep_parser.resource_series)} resource points"
+            )
         else:
-            print(f"Warning: BEP file not found: {args.bep_file}")
-    
-    print(f"Starting Bazel ChatViz server on {args.host}:{args.port}")
-    uvicorn.run(app, host=args.host, port=args.port)
+            print(f"[WARN] BEP file not found: {path}")
+
+    print(f"Starting server on {args.host}:{args.port}")
+    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+
 
 if __name__ == "__main__":
     main()
