@@ -1,118 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Upload, Send, MessageCircle, BarChart3, Network, TestTube, Settings, FileText, AlertCircle, CheckCircle, Clock } from 'lucide-react';
+import { Upload, Send, MessageCircle, BarChart3, Network, TestTube, Settings, FileText, AlertCircle, CheckCircle, Clock, TrendingUp, Activity } from 'lucide-react';
 import * as d3 from 'd3';
-
-import ResourceGraph from './ResourceGraph';
+import ResourceGraph from "./ResourceGraph"
+import DependencyGraph from './DependencyGraph';
 
 const API_BASE = 'http://localhost:8000/api';
 
 
-
-
-const BuildGraph = () => {
-  const [graphData, setGraphData] = useState(null);
-
-  useEffect(() => {
-    fetch('http://localhost:8000/api/graph')
-      .then(response => response.json())
-      .then(data => {
-        console.log('Graph data:', data); // Debug log
-        setGraphData(data);
-        if (data.nodes.length > 0) {
-          renderGraph(data);
-        }
-      })
-      .catch(error => console.error('Error fetching graph data:', error));
-  }, []);
-
-  const renderGraph = (data) => {
-    const width = 800;
-    const height = 600;
-
-    // Clear any existing SVG
-    d3.select('#graph-container').selectAll('*').remove();
-
-    const svg = d3.select('#graph-container')
-      .append('svg')
-      .attr('width', width)
-      .attr('height', height);
-
-    // Create force simulation
-    const simulation = d3.forceSimulation(data.nodes)
-      .force('link', d3.forceLink(data.edges).id(d => d.id))
-      .force('charge', d3.forceManyBody().strength(-100))
-      .force('center', d3.forceCenter(width / 2, height / 2));
-
-    // Add links
-    const link = svg.append('g')
-      .selectAll('line')
-      .data(data.edges)
-      .enter()
-      .append('line')
-      .attr('stroke', '#999')
-      .attr('stroke-opacity', 0.6);
-
-    // Add nodes
-    const node = svg.append('g')
-      .selectAll('circle')
-      .data(data.nodes)
-      .enter()
-      .append('circle')
-      .attr('r', 5)
-      .attr('fill', d => {
-        switch (d.type) {
-          case 'target': return d.status === 'success' ? '#4CAF50' : '#f44336';
-          case 'test': return d.status === 'passed' ? '#2196F3' : '#FF9800';
-          default: return '#9E9E9E';
-        }
-      });
-
-    // Add labels
-    const label = svg.append('g')
-      .selectAll('text')
-      .data(data.nodes)
-      .enter()
-      .append('text')
-      .text(d => d.label)
-      .attr('font-size', 8)
-      .attr('dx', 8)
-      .attr('dy', 3);
-
-    // Update positions on simulation tick
-    simulation.on('tick', () => {
-      link
-        .attr('x1', d => d.source.x)
-        .attr('y1', d => d.source.y)
-        .attr('x2', d => d.target.x)
-        .attr('y2', d => d.target.y);
-
-      node
-        .attr('cx', d => d.x)
-        .attr('cy', d => d.y);
-
-      label
-        .attr('x', d => d.x)
-        .attr('y', d => d.y);
-    });
-  };
-
-   return (
-    <div>
-      <h2>Build Dependency Graph</h2>
-      <div id="graph-container"></div>
-      {graphData && (
-        <div className="graph-stats">
-          <p>Targets: {graphData.metadata.totalTargets}</p>
-          <p>Tests: {graphData.metadata.totalTests}</p>
-        </div>
-      )}
-    </div>
-  );
-};
-
-
-
-// Graph visualization component using D3.js concepts with React
 const GraphVisualization = ({ nodes, edges, selectedNode, onNodeClick }) => {
   const [mounted, setMounted] = useState(false);
   
@@ -218,9 +112,8 @@ const ChatInterface = ({ onSendMessage, messages, isLoading }) => {
   ];
 
   return (
-    <div className="flex flex-col h-96">
-      {/* Messages area */}
-      <div className="flex-1 overflow-y-auto bg-gray-50 rounded-lg p-4 mb-4 space-y-3">
+    <div className="flex flex-col h-full">
+      <div className="flex-1 overflow-y-auto bg-gray-50 rounded-lg p-4 mb-4 space-y-3 min-h-96">
         {messages.length === 0 ? (
           <div className="text-gray-500 text-center">
             <MessageCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
@@ -272,8 +165,7 @@ const ChatInterface = ({ onSendMessage, messages, isLoading }) => {
         )}
       </div>
 
-      {/* Input area */}
-      <form onSubmit={handleSubmit} className="flex gap-2">
+      <div className="flex gap-2">
         <input
           type="text"
           value={input}
@@ -281,75 +173,26 @@ const ChatInterface = ({ onSendMessage, messages, isLoading }) => {
           placeholder="Ask about your build... (e.g., 'Show me failed targets')"
           className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           disabled={isLoading}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              handleSubmit(e);
+            }
+          }}
         />
         <button
-          type="submit"
+          onClick={handleSubmit}
           disabled={!input.trim() || isLoading}
           className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           <Send className="w-4 h-4" />
         </button>
-      </form>
+      </div>
     </div>
   );
 };
 
-const StatsPanel = ({ stats }) => {
-  if (!stats) return null;
-
-  const items = [
-    {
-      label: 'Targets',
-      value: `${stats.successful_targets || 0}/${stats.targets || 0}`,
-      icon: FileText,
-      color: 'blue',
-      success: (stats.successful_targets || 0) === (stats.targets || 0)
-    },
-    {
-      label: 'Tests',
-      value: `${stats.passed_tests || 0}/${stats.tests || 0}`,
-      icon: TestTube,
-      color: 'green',
-      success: (stats.passed_tests || 0) === (stats.tests || 0)
-    },
-    {
-      label: 'Actions',
-      value: stats.actions || 0,
-      icon: Settings,
-      color: 'purple'
-    }
-  ];
-
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-      {items.map((item, index) => (
-        <div key={index} className="bg-white rounded-lg border border-gray-200 p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">{item.label}</p>
-              <p className="text-2xl font-bold text-gray-900">{item.value}</p>
-            </div>
-            <div className={`p-2 rounded-lg ${
-              item.success === true ? 'bg-green-100 text-green-600' :
-              item.success === false ? 'bg-red-100 text-red-600' :
-              `bg-${item.color}-100 text-${item.color}-600`
-            }`}>
-              {item.success === true ? (
-                <CheckCircle className="w-6 h-6" />
-              ) : item.success === false ? (
-                <AlertCircle className="w-6 h-6" />
-              ) : (
-                <item.icon className="w-6 h-6" />
-              )}
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-};
-
-const FileUploader = ({ onFileUpload, isUploading, hasData }) => {
+const CompactFileUploader = ({ onFileUpload, isUploading, hasData }) => {
   const [dragActive, setDragActive] = useState(false);
   
   const handleDrag = useCallback((e) => {
@@ -380,53 +223,154 @@ const FileUploader = ({ onFileUpload, isUploading, hasData }) => {
   }, [onFileUpload]);
 
   return (
-    <div className="mb-6">
-      <div
-        className={`
-          relative border-2 border-dashed rounded-lg p-6 text-center transition-colors
-          ${dragActive ? 'border-blue-400 bg-blue-50' : 'border-gray-300'}
-          ${hasData ? 'bg-green-50 border-green-300' : ''}
-          ${isUploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-gray-400'}
-        `}
-        onDragEnter={handleDrag}
-        onDragLeave={handleDrag}
-        onDragOver={handleDrag}
-        onDrop={handleDrop}
-      >
-        <input
-          type="file"
-          accept=".json,.jsonl"
-          onChange={handleChange}
-          disabled={isUploading}
-          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
-        />
+    <div
+      className={`
+        relative border-2 border-dashed rounded-lg p-4 text-center transition-colors cursor-pointer
+        ${dragActive ? 'border-blue-400 bg-blue-50' : 'border-gray-300'}
+        ${hasData ? 'bg-green-50 border-green-300' : ''}
+        ${isUploading ? 'opacity-50 cursor-not-allowed' : 'hover:border-gray-400'}
+      `}
+      onDragEnter={handleDrag}
+      onDragLeave={handleDrag}
+      onDragOver={handleDrag}
+      onDrop={handleDrop}
+    >
+      <input
+        type="file"
+        accept=".json,.jsonl"
+        onChange={handleChange}
+        disabled={isUploading}
+        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+      />
+      
+      <div className="flex items-center gap-3">
+        <Upload className={`
+          w-6 h-6
+          ${hasData ? 'text-green-500' : dragActive ? 'text-blue-500' : 'text-gray-400'}
+        `} />
         
-        <div className="space-y-2">
-          <Upload className={`
-            w-10 h-10 mx-auto 
-            ${hasData ? 'text-green-500' : dragActive ? 'text-blue-500' : 'text-gray-400'}
-          `} />
-          
-          {isUploading ? (
-            <div className="space-y-2">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500 mx-auto"></div>
-              <p className="text-sm text-gray-600">Uploading and parsing BEP file...</p>
+        {isUploading ? (
+          <div className="flex items-center gap-2">
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+            <span className="text-sm text-gray-600">Uploading...</span>
+          </div>
+        ) : hasData ? (
+          <div className="text-left">
+            <p className="text-sm font-medium text-green-600">✓ BEP loaded</p>
+            <p className="text-xs text-gray-500">Drop new file to reload</p>
+          </div>
+        ) : (
+          <div className="text-left">
+            <p className="text-sm font-medium text-gray-700">Upload BEP file</p>
+            <p className="text-xs text-gray-500">JSON or JSONL format</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const StatsOverview = ({ stats }) => {
+  if (!stats) {
+    return (
+      <div className="flex items-center justify-center h-96 text-gray-500">
+        <div className="text-center">
+          <BarChart3 className="w-12 h-12 mx-auto mb-2 opacity-50" />
+          <p>Load a BEP file to see build statistics</p>
+        </div>
+      </div>
+    );
+  }
+
+  const items = [
+    {
+      label: 'Targets',
+      value: stats.targets || 0,
+      success: stats.successful_targets || 0,
+      icon: FileText,
+      color: 'blue'
+    },
+    {
+      label: 'Tests',
+      value: stats.tests || 0,
+      success: stats.passed_tests || 0,
+      icon: TestTube,
+      color: 'green'
+    },
+    {
+      label: 'Actions',
+      value: stats.actions || 0,
+      icon: Settings,
+      color: 'purple'
+    }
+  ];
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {items.map((item, index) => (
+          <div key={index} className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">{item.label}</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <p className="text-2xl font-bold text-gray-900">{item.value}</p>
+                  {item.success !== undefined && (
+                    <span className="text-sm text-gray-500">
+                      ({item.success} successful)
+                    </span>
+                  )}
+                </div>
+                {item.success !== undefined && (
+                  <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className={`h-2 rounded-full ${
+                        item.success === item.value ? 'bg-green-500' : 'bg-yellow-500'
+                      }`}
+                      style={{ width: `${(item.success / item.value) * 100}%` }}
+                    ></div>
+                  </div>
+                )}
+              </div>
+              <div className={`p-3 rounded-lg bg-${item.color}-100 text-${item.color}-600`}>
+                <item.icon className="w-6 h-6" />
+              </div>
             </div>
-          ) : hasData ? (
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-green-600">✓ BEP file loaded successfully</p>
-              <p className="text-xs text-gray-500">Drop another file to reload, or start chatting below</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
+        <h3 className="text-lg font-medium text-gray-900 mb-4">Build Summary</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+          <div className="space-y-2">
+            <div className="flex justify-between">
+              <span className="text-gray-600">Total Targets:</span>
+              <span className="font-medium">{stats.targets}</span>
             </div>
-          ) : (
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-gray-700">
-                Drop your BEP JSON file here or click to browse
-              </p>
-              <p className="text-xs text-gray-500">
-                Supports .json and .jsonl files from bazel build --build_event_json_file
-              </p>
+            <div className="flex justify-between">
+              <span className="text-gray-600">Successful Targets:</span>
+              <span className="font-medium text-green-600">{stats.successful_targets}</span>
             </div>
-          )}
+            <div className="flex justify-between">
+              <span className="text-gray-600">Failed Targets:</span>
+              <span className="font-medium text-red-600">{(stats.targets || 0) - (stats.successful_targets || 0)}</span>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <div className="flex justify-between">
+              <span className="text-gray-600">Total Tests:</span>
+              <span className="font-medium">{stats.tests}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600">Passed Tests:</span>
+              <span className="font-medium text-green-600">{stats.passed_tests}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600">Actions Executed:</span>
+              <span className="font-medium">{stats.actions}</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -486,7 +430,6 @@ const BazelChatViz = () => {
           metadata: result.stats
         }]);
         
-        // Refresh data
         await fetchStats();
         await fetchGraph();
       } else {
@@ -507,7 +450,6 @@ const BazelChatViz = () => {
   };
 
   const handleSendMessage = async (message) => {
-    // Add user message
     const userMessage = { type: 'user', content: message };
     setMessages(prev => [...prev, userMessage]);
     setIsLoading(true);
@@ -524,7 +466,6 @@ const BazelChatViz = () => {
       if (response.ok) {
         const result = await response.json();
         
-        // Add assistant response
         const assistantMessage = {
           type: 'assistant',
           content: result.answer,
@@ -532,13 +473,12 @@ const BazelChatViz = () => {
         };
         setMessages(prev => [...prev, assistantMessage]);
 
-        // Update graph if new data provided
         if (result.graph_nodes) {
           setGraphData({
             nodes: result.graph_nodes,
             edges: result.graph_edges || []
           });
-          setActiveTab('graph'); // Switch to graph view
+          setActiveTab('dependency-graph');
         }
       } else {
         const error = await response.json();
@@ -559,49 +499,45 @@ const BazelChatViz = () => {
 
   const handleNodeClick = (node) => {
     setSelectedNode(node);
-    // Could trigger additional queries about this node
     handleSendMessage(`Tell me more about ${node.label}`);
   };
 
   const tabs = [
     { id: 'overview', label: 'Overview', icon: BarChart3 },
-    { id: 'graph', label: 'Graph', icon: Network },
+    { id: 'dependency-graph', label: 'Dependency Graph', icon: Network },
+    { id: 'performance', label: 'Resource Usage', icon: TrendingUp },
     { id: 'chat', label: 'Chat', icon: MessageCircle },
   ];
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">Bazel ChatViz</h1>
-          <p className="text-gray-600">Visualize and chat with your Bazel builds</p>
+    <div className="min-h-screen bg-gray-50">
+      <div className="container mx-auto px-4 py-6">
+        {/* Header with compact upload */}
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Bazel ChatViz</h1>
+            <p className="text-gray-600">Visualize and chat with your Bazel builds</p>
+          </div>
+          <div className="w-80">
+            <CompactFileUploader 
+              onFileUpload={handleFileUpload}
+              isUploading={isUploading}
+              hasData={stats !== null}
+            />
+          </div>
         </div>
 
-        {/* <BuildGraph /> */}
-
-         <ResourceGraph />
-
-        {/* File Upload */}
-        <FileUploader 
-          onFileUpload={handleFileUpload}
-          isUploading={isUploading}
-          hasData={stats !== null}
-        />
-
-        {/* Stats Panel */}
-        <StatsPanel stats={stats} />
-
-        {/* Tabs */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+        {/* Main content with tabs */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+          {/* Tab navigation */}
           <div className="border-b border-gray-200">
-            <nav className="flex">
+            <nav className="flex overflow-x-auto">
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   className={`
-                    flex items-center gap-2 px-6 py-3 font-medium text-sm border-b-2 transition-colors
+                    flex items-center gap-2 px-6 py-4 font-medium text-sm border-b-2 transition-colors whitespace-nowrap
                     ${activeTab === tab.id
                       ? 'border-blue-500 text-blue-600 bg-blue-50'
                       : 'border-transparent text-gray-600 hover:text-gray-800 hover:bg-gray-50'
@@ -615,65 +551,27 @@ const BazelChatViz = () => {
             </nav>
           </div>
 
-          <div className="p-6">
+          {/* Tab content */}
+          <div className="p-6 min-h-[500px]">
             {activeTab === 'overview' && (
-              <div className="space-y-6">
-                <div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-3">Build Overview</h3>
-                  {stats ? (
-                    <div className="bg-gray-50 rounded-lg p-4">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                        <div>
-                          <span className="font-medium">Total Targets:</span> {stats.targets}
-                        </div>
-                        <div>
-                          <span className="font-medium">Successful Targets:</span> {stats.successful_targets}
-                        </div>
-                        <div>
-                          <span className="font-medium">Total Tests:</span> {stats.tests}
-                        </div>
-                        <div>
-                          <span className="font-medium">Passed Tests:</span> {stats.passed_tests}
-                        </div>
-                        <div>
-                          <span className="font-medium">Actions Executed:</span> {stats.actions}
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-gray-500">Load a BEP file to see build statistics</p>
-                  )}
-                </div>
+              <StatsOverview stats={stats} />
+            )}
+
+            {activeTab === 'dependency-graph' && (
+              <div className="h-full">
+                <DependencyGraph />
               </div>
             )}
 
-            {activeTab === 'graph' && (
-              <div>
-                <h3 className="text-lg font-medium text-gray-900 mb-3">Build Graph</h3>
-                <GraphVisualization
-                  nodes={graphData.nodes}
-                  edges={graphData.edges}
-                  selectedNode={selectedNode}
-                  onNodeClick={handleNodeClick}
-                />
-                {selectedNode && (
-                  <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                    <h4 className="font-medium text-blue-900">Selected: {selectedNode.label}</h4>
-                    <div className="text-sm text-blue-700 mt-1">
-                      <div>Type: {selectedNode.type}</div>
-                      <div>Status: {selectedNode.status}</div>
-                      {selectedNode.execution_time && (
-                        <div>Execution Time: {selectedNode.execution_time}s</div>
-                      )}
-                    </div>
-                  </div>
-                )}
+            {activeTab === 'performance' && (
+              <div className="h-full">
+                <ResourceGraph />
               </div>
             )}
 
             {activeTab === 'chat' && (
-              <div>
-                <h3 className="text-lg font-medium text-gray-900 mb-3">Chat with Your Build</h3>
+              <div className="h-full">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Chat with Your Build</h3>
                 <ChatInterface
                   onSendMessage={handleSendMessage}
                   messages={messages}
@@ -686,8 +584,7 @@ const BazelChatViz = () => {
 
         {/* Footer */}
         <div className="text-center mt-8 text-gray-500 text-sm">
-          <p>Bazel ChatViz - Local build analysis tool</p>
-          <p>Upload a BEP JSON file generated with: <code className="bg-gray-200 px-1 rounded">bazel build --build_event_json_file=build.json //...</code></p>
+          <p>Generate BEP files with: <code className="bg-gray-200 px-2 py-1 rounded">bazel build --build_event_json_file=build.json //...</code></p>
         </div>
       </div>
     </div>
