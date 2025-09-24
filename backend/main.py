@@ -3,7 +3,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
-
+from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
@@ -25,9 +25,12 @@ class BEPRAGProcessor:
     def __init__(self):
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000,
-            chunk_overlap=100
+            chunk_overlap=200
         )
-        self.embeddings = OpenAIEmbeddings()
+        self.embeddings = OpenAIEmbeddings(
+            openai_api_key = os.getenv("OPENAI_API_KEY"),
+            model = "text-embedding-ada-002"
+        )
         self.vector_store = None
         self.qa_chain = None
         self.memory = ConversationBufferMemory(
@@ -41,7 +44,7 @@ class BEPRAGProcessor:
         texts = []
         for event in bep_events:
             # Convert each event to a structured text representation
-            text = f"Event Type: {List(event.get('id', {}).keys())[0] if event.get('id') else 'unknown'}\n"
+            text = f"Event Type: {list(event.get('id', {}).keys())[0] if event.get('id') else 'unknown'}\n"
             text += json.dumps(event, indent=2)
             texts.append(text)
 
@@ -455,9 +458,12 @@ async def get_graph():
     }
 
 
+class QueryRequest(BaseModel):
+    query: str
+
 # API endpoint for querying
 @app.post("/api/query")
-async def query_bep(query: str):
+async def query_bep(request: QueryRequest):
     """Query the BEP data using RAG"""
     try:
         if not bep_parser.rag_processor.vector_store:
@@ -466,9 +472,9 @@ async def query_bep(query: str):
                 detail="No BEP data processed for RAG"
             )
 
-        response = bep_parser.rag_processor.query(query)
+        response = bep_parser.rag_processor.query(request.query)
         return{
-            "query": query,
+            "query": request.query,
             "response": response
         }
     except Exception as e:
