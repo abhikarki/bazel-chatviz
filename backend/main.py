@@ -8,6 +8,67 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.embeddings import OpenAIEmbeddings
+from langchain.vectorstores import FAISS
+from langchain.chat_models import ChatOpenAI
+from langchain.chains import ConversationalRetrievalChain
+from langchain.memory import ConversationBufferMemory
+from dotenv import load_dotenv
+
+
+#load environment variables for API keys
+load_dotenv()
+
+
+class BEPRAGProcessor:
+    def __init__(self):
+        self.text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000,
+            chunk_overlap=100
+        )
+        self.embeddings = OpenAIEmbeddings()
+        self.vector_store = None
+        self.qa_chain = None
+        self.memory = ConversationBufferMemory(
+            memory_key = 'chat_history',
+            return_messages=True
+        )
+    
+    def process_bep_data(self, bep_events: List[Dict[str, Any]]) -> None:
+        """Process BEP data into searchable chunks"""
+        # convert events to text
+        texts = []
+        for event in bep_events:
+            # Convert each event to a structured text representation
+            text = f"Event Type: {List(event.get('id', {}).keys())[0] if event.get('id') else 'unknown'}\n"
+            text += json.dumps(event, indent=2)
+            texts.append(text)
+
+        #create chunks
+        chunks = self.text_splitter.create_documents(texts)
+
+        #create vector store
+        self.vector_store = FAISS.from_documents(chunks, self.embeddings)
+
+        # Initialize QA chain
+        llm = ChatOpenAI(temperature = 0)
+        self.qa_chain = ConversationalRetrievalChain.from_llm(
+            llm = llm,
+            retriever = self.vector_store.as_retriever(),
+            memory=self.memory
+        )
+
+    def query(self, question: str) -> str:
+        """Query the BEP data using RAG"""
+        if not self.qa_chain:
+            raise ValueError("BEP data not processed yet")
+        
+        result = self.qa_chain({"question": question})
+        return result['answer']
+    
+
+
 
 # =========
 # Data types
@@ -51,6 +112,7 @@ class BEPParser:
         # Resource series (best effort)
         # time: milliseconds (if available); cpu/memory: numeric (unit depends on Bazel version)
         self.resource_series: List[Dict[str, Optional[float]]] = []
+        self.rag_processor = BEPRAGProcessor()
 
     # --------- Public API ---------
 
@@ -74,6 +136,8 @@ class BEPParser:
                     continue
                 self.events.append(event)
                 self._process_event(event)
+        
+        self.rag_processor.process_bep_data(self.events)
 
     # --------- Internals ---------
 
@@ -389,6 +453,27 @@ async def get_graph():
             "groups": sorted({n["group"] for n in nodes}),
         },
     }
+
+
+# API endpoint for querying
+@app.post("/api/query")
+async def query_bep(query: str):
+    """Query the BEP data using RAG"""
+    try:
+        if not bep_parser.rag_processor.vector_store:
+            raise HTTPException(
+                status_code=400,
+                detail="No BEP data processed for RAG"
+            )
+
+        response = bep_parser.rag_processor.query(query)
+        return{
+            "query": query,
+            "response": response
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
 
 
 def main():
