@@ -1,4 +1,4 @@
-# Bazel ChatViz
+# Bazel ChatViz- Making build analysis as easy as having a conversation.
 
 A local tool for visualizing and chatting with Bazel build data. Analyze build event protocol (BEP) files through an interactive web interface with natural language queries.
 
@@ -104,5 +104,3 @@ npm run dev
 MIT License - see LICENSE file for details.
 
 ---
-
-**Bazel ChatViz** - Making build analysis as easy as having a conversation.
