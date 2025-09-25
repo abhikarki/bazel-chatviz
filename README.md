@@ -2,6 +2,11 @@
 
 A local tool for visualizing and chatting with Bazel build data. Analyze build event protocol (BEP) files through an interactive web interface with natural language queries.
 
+
+https://github.com/user-attachments/assets/617d93b3-2322-4a0c-a770-49f3be662ace
+
+
+
 ## Features
 
 - **Interactive Build Visualization**: Graph-based view of build targets, tests, and dependencies
