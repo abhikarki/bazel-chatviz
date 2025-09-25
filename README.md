@@ -32,18 +32,6 @@ bazel build --build_event_json_file=build.json //your/target:here
 ./bazel-chatviz serve
 ```
 
-## Usage Examples
-
-Once running, you can ask questions like:
-
-- **"Show me failed targets"** - Lists all failed build targets
-- **"What are the test results?"** - Summary of test passes/failures
-- **"Which targets were rebuilt?"** - Shows cache misses and rebuilds
-- **"Show build performance summary"** - Execution time analysis
-- **"What are the dependencies of //my:target?"** - Dependency graph for specific target
-- **"Why was X rebuilt?"** - Analysis of cache misses
-- **"Show me the slowest actions"** - Performance bottlenecks
-
 ## Architecture
 
 ### Backend (Python + FastAPI)
@@ -79,12 +67,10 @@ Once running, you can ask questions like:
 
 | Endpoint | Method | Description |
 |----------|---------|-------------|
-| `/api/load-bep` | POST | Upload and parse BEP file |
 | `/api/graph` | GET | Get build dependency graph data |
-| `/api/chat` | POST | Process natural language queries |
-| `/api/tests` | GET | Get test results summary |
-| `/api/stats` | GET | Get build statistics overview |
-```
+| `/api/query` | POST | Process natural language queries for chatbot |
+| `/api/resource-usage` | GET | Get the resource usage graphs |
+\```
 
 ## Development
 
