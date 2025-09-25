@@ -3,6 +3,7 @@ import { Upload, Send, MessageCircle, BarChart3, Network, TestTube, Settings, Fi
 import * as d3 from 'd3';
 import ResourceGraph from "./ResourceGraph"
 import DependencyGraph from './DependencyGraph';
+import BuildChatbot from './BuildChatbot';
 
 const API_BASE = 'http://localhost:8000/api';
 
@@ -568,17 +569,6 @@ const BazelChatViz = () => {
                 <ResourceGraph />
               </div>
             )}
-
-            {activeTab === 'chat' && (
-              <div className="h-full">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Chat with Your Build</h3>
-                <ChatInterface
-                  onSendMessage={handleSendMessage}
-                  messages={messages}
-                  isLoading={isLoading}
-                />
-              </div>
-            )}
           </div>
         </div>
 
@@ -587,6 +577,7 @@ const BazelChatViz = () => {
           <p>Generate BEP files with: <code className="bg-gray-200 px-2 py-1 rounded">bazel build --build_event_json_file=build.json //...</code></p>
         </div>
       </div>
+      <BuildChatbot />
     </div>
   );
 };

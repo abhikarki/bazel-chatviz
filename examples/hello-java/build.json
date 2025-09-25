@@ -1,51 +1,221 @@
-{"id": {"configuredTarget": {"label": "//lib:math"}}, "configured": {"targetKind": "cc_library rule", "deps": []}}
-{"id": {"targetCompleted": {"label": "//lib:math"}}, "completed": {"success": true}}
+{"id": {"started": {}}, "started": {"buildId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "startTimeMillis": 1700000000000}}
 
-{"id": {"configuredTarget": {"label": "//lib:utils"}}, "configured": {"targetKind": "cc_library rule", "deps": ["//lib:math"]}}
-{"id": {"targetCompleted": {"label": "//lib:utils"}}, "completed": {"success": true}}
+{"id": {"configuredTarget": {"label": "//base:logging"}}, "configured": {"targetKind": "cc_library rule", "deps": []}}
+{"id": {"configuredTarget": {"label": "//base:memory"}}, "configured": {"targetKind": "cc_library rule", "deps": []}}
+{"id": {"configuredTarget": {"label": "//base:threading"}}, "configured": {"targetKind": "cc_library rule", "deps": []}}
+{"id": {"configuredTarget": {"label": "//base:time"}}, "configured": {"targetKind": "cc_library rule", "deps": []}}
+{"id": {"configuredTarget": {"label": "//base:status"}}, "configured": {"targetKind": "cc_library rule", "deps": []}}
 
-{"id": {"configuredTarget": {"label": "//lib:string"}}, "configured": {"targetKind": "cc_library rule", "deps": ["//lib:utils"]}}
-{"id": {"targetCompleted": {"label": "//lib:string"}}, "completed": {"success": true}}
+{"id": {"configuredTarget": {"label": "//crypto:hash"}}, "configured": {"targetKind": "cc_library rule", "deps": ["//base:memory"]}}
+{"id": {"configuredTarget": {"label": "//crypto:encryption"}}, "configured": {"targetKind": "cc_library rule", "deps": ["//base:memory", "//crypto:hash"]}}
+{"id": {"configuredTarget": {"label": "//crypto:certificates"}}, "configured": {"targetKind": "cc_library rule", "deps": ["//crypto:encryption"]}}
 
-{"id": {"configuredTarget": {"label": "//lib:net"}}, "configured": {"targetKind": "cc_library rule", "deps": ["//lib:utils", "//lib:string"]}}
-{"id": {"targetCompleted": {"label": "//lib:net"}}, "completed": {"success": true}}
+{"id": {"configuredTarget": {"label": "//storage:cache"}}, "configured": {"targetKind": "cc_library rule", "deps": ["//base:memory", "//base:threading"]}}
+{"id": {"configuredTarget": {"label": "//storage:filesystem"}}, "configured": {"targetKind": "cc_library rule", "deps": ["//base:logging", "//base:status"]}}
+{"id": {"configuredTarget": {"label": "//storage:database"}}, "configured": {"targetKind": "cc_library rule", "deps": ["//storage:filesystem", "//storage:cache", "//base:threading"]}}
 
-{"id": {"configuredTarget": {"label": "//lib:db"}}, "configured": {"targetKind": "cc_library rule", "deps": ["//lib:net"]}}
-{"id": {"targetCompleted": {"label": "//lib:db"}}, "completed": {"success": true}}
+{"id": {"configuredTarget": {"label": "//network:http"}}, "configured": {"targetKind": "cc_library rule", "deps": ["//base:logging", "//base:status", "//crypto:certificates"]}}
+{"id": {"configuredTarget": {"label": "//network:grpc"}}, "configured": {"targetKind": "cc_library rule", "deps": ["//network:http", "//crypto:encryption"]}}
+{"id": {"configuredTarget": {"label": "//network:websocket"}}, "configured": {"targetKind": "cc_library rule", "deps": ["//network:http"]}}
 
-{"id": {"configuredTarget": {"label": "//lib:algo"}}, "configured": {"targetKind": "cc_library rule", "deps": ["//lib:math", "//lib:utils"]}}
-{"id": {"targetCompleted": {"label": "//lib:algo"}}, "completed": {"success": true}}
+{"id": {"configuredTarget": {"label": "//ml:tensor"}}, "configured": {"targetKind": "cc_library rule", "deps": ["//base:memory", "//base:threading"]}}
+{"id": {"configuredTarget": {"label": "//ml:model"}}, "configured": {"targetKind": "cc_library rule", "deps": ["//ml:tensor", "//storage:filesystem"]}}
+{"id": {"configuredTarget": {"label": "//ml:training"}}, "configured": {"targetKind": "cc_library rule", "deps": ["//ml:model", "//base:time"]}}
+{"id": {"configuredTarget": {"label": "//ml:inference"}}, "configured": {"targetKind": "cc_library rule", "deps": ["//ml:model", "//network:grpc"]}}
 
-{"id": {"configuredTarget": {"label": "//app:main_bin"}}, "configured": {"targetKind": "cc_binary rule", "deps": ["//lib:db", "//lib:algo"]}}
-{"id": {"targetCompleted": {"label": "//app:main_bin"}}, "completed": {"success": true}}
+{"id": {"configuredTarget": {"label": "//analytics:metrics"}}, "configured": {"targetKind": "cc_library rule", "deps": ["//base:time", "//base:logging"]}}
+{"id": {"configuredTarget": {"label": "//analytics:dashboard"}}, "configured": {"targetKind": "cc_library rule", "deps": ["//analytics:metrics", "//network:http", "//storage:database"]}}
 
-{"id": {"configuredTarget": {"label": "//tools:helper_bin"}}, "configured": {"targetKind": "cc_binary rule", "deps": ["//lib:utils", "//lib:string"]}}
-{"id": {"targetCompleted": {"label": "//tools:helper_bin"}}, "completed": {"success": true}}
+{"id": {"configuredTarget": {"label": "//services:auth"}}, "configured": {"targetKind": "cc_library rule", "deps": ["//crypto:certificates", "//storage:database", "//network:grpc"]}}
+{"id": {"configuredTarget": {"label": "//services:user_management"}}, "configured": {"targetKind": "cc_library rule", "deps": ["//services:auth", "//storage:database"]}}
+{"id": {"configuredTarget": {"label": "//services:content"}}, "configured": {"targetKind": "cc_library rule", "deps": ["//storage:database", "//storage:cache", "//services:auth"]}}
+{"id": {"configuredTarget": {"label": "//services:recommendation"}}, "configured": {"targetKind": "cc_library rule", "deps": ["//ml:inference", "//services:content", "//analytics:metrics"]}}
 
-{"id": {"configuredTarget": {"label": "//app:main_test"}}, "configured": {"targetKind": "cc_test rule", "deps": ["//app:main_bin"]}}
-{"id": {"targetCompleted": {"label": "//app:main_test"}}, "completed": {"success": true}}
-{"id": {"testResult": {"label": "//app:main_test"}}, "testResult": {"status": "PASSED", "run": 1, "attempt": 0}}
+{"id": {"configuredTarget": {"label": "//frontend:react_app"}}, "configured": {"targetKind": "nodejs_binary rule", "deps": []}}
+{"id": {"configuredTarget": {"label": "//frontend:static_assets"}}, "configured": {"targetKind": "filegroup rule", "deps": []}}
 
-{"id": {"configuredTarget": {"label": "//lib:algo_test"}}, "configured": {"targetKind": "cc_test rule", "deps": ["//lib:algo"]}}
-{"id": {"targetCompleted": {"label": "//lib:algo_test"}}, "completed": {"success": false}}
-{"id": {"testResult": {"label": "//lib:algo_test"}}, "testResult": {"status": "FAILED", "run": 1, "attempt": 0}}
+{"id": {"configuredTarget": {"label": "//backend:api_server"}}, "configured": {"targetKind": "cc_binary rule", "deps": ["//services:auth", "//services:user_management", "//services:content", "//services:recommendation", "//network:grpc", "//analytics:dashboard"]}}
+{"id": {"configuredTarget": {"label": "//backend:ml_worker"}}, "configured": {"targetKind": "cc_binary rule", "deps": ["//ml:training", "//ml:inference", "//network:grpc", "//storage:database"]}}
+{"id": {"configuredTarget": {"label": "//backend:data_processor"}}, "configured": {"targetKind": "cc_binary rule", "deps": ["//storage:database", "//analytics:metrics", "//base:threading"]}}
 
-{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/lib/math.o"}}}
-{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/lib/utils.o"}}}
-{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/lib/string.o"}}}
-{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/lib/net.o"}}}
-{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/lib/db.o"}}}
-{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/lib/algo.o"}}}
-{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/app/main_bin"}}}
-{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/tools/helper_bin"}}}
+{"id": {"configuredTarget": {"label": "//tools:migration_tool"}}, "configured": {"targetKind": "cc_binary rule", "deps": ["//storage:database", "//base:logging"]}}
+{"id": {"configuredTarget": {"label": "//tools:benchmark_tool"}}, "configured": {"targetKind": "cc_binary rule", "deps": ["//ml:inference", "//analytics:metrics", "//base:time"]}}
+{"id": {"configuredTarget": {"label": "//tools:deployment_helper"}}, "configured": {"targetKind": "sh_binary rule", "deps": []}}
 
-{"id": {"progress": {}}, "timeMillis": 100, "progress": {"resourceUsage": {"cpuUsage": 0.10, "memoryUsage": 100.0}}}
-{"id": {"progress": {}}, "timeMillis": 200, "progress": {"resourceUsage": {"cpuUsage": 0.15, "memoryUsage": 130.0}}}
-{"id": {"progress": {}}, "timeMillis": 300, "progress": {"resourceUsage": {"cpuUsage": 0.25, "memoryUsage": 160.0}}}
-{"id": {"progress": {}}, "timeMillis": 400, "progress": {"resourceUsage": {"cpuUsage": 0.40, "memoryUsage": 210.0}}}
-{"id": {"progress": {}}, "timeMillis": 500, "progress": {"resourceUsage": {"cpuUsage": 0.35, "memoryUsage": 190.0}}}
-{"id": {"progress": {}}, "timeMillis": 600, "progress": {"resourceUsage": {"cpuUsage": 0.50, "memoryUsage": 230.0}}}
-{"id": {"progress": {}}, "timeMillis": 700, "progress": {"resourceUsage": {"cpuUsage": 0.45, "memoryUsage": 220.0}}}
-{"id": {"progress": {}}, "timeMillis": 800, "progress": {"resourceUsage": {"cpuUsage": 0.55, "memoryUsage": 260.0}}}
-{"id": {"progress": {}}, "timeMillis": 900, "progress": {"resourceUsage": {"cpuUsage": 0.60, "memoryUsage": 300.0}}}
-{"id": {"progress": {}}, "timeMillis": 1000, "progress": {"resourceUsage": {"cpuUsage": 0.50, "memoryUsage": 280.0}}}
+{"id": {"configuredTarget": {"label": "//tests:unit_base"}}, "configured": {"targetKind": "cc_test rule", "deps": ["//base:logging", "//base:memory", "//base:threading"]}}
+{"id": {"configuredTarget": {"label": "//tests:unit_crypto"}}, "configured": {"targetKind": "cc_test rule", "deps": ["//crypto:hash", "//crypto:encryption", "//crypto:certificates"]}}
+{"id": {"configuredTarget": {"label": "//tests:unit_storage"}}, "configured": {"targetKind": "cc_test rule", "deps": ["//storage:cache", "//storage:filesystem", "//storage:database"]}}
+{"id": {"configuredTarget": {"label": "//tests:unit_network"}}, "configured": {"targetKind": "cc_test rule", "deps": ["//network:http", "//network:grpc", "//network:websocket"]}}
+{"id": {"configuredTarget": {"label": "//tests:unit_ml"}}, "configured": {"targetKind": "cc_test rule", "deps": ["//ml:tensor", "//ml:model", "//ml:training", "//ml:inference"]}}
+{"id": {"configuredTarget": {"label": "//tests:integration_api"}}, "configured": {"targetKind": "cc_test rule", "deps": ["//backend:api_server", "//services:auth"]}}
+{"id": {"configuredTarget": {"label": "//tests:integration_ml"}}, "configured": {"targetKind": "cc_test rule", "deps": ["//backend:ml_worker", "//ml:training"]}}
+{"id": {"configuredTarget": {"label": "//tests:e2e_full_stack"}}, "configured": {"targetKind": "cc_test rule", "deps": ["//backend:api_server", "//backend:ml_worker", "//frontend:react_app"]}}
+
+{"id": {"progress": {}}, "timeMillis": 50, "progress": {"resourceUsage": {"cpuUsage": 0.05, "memoryUsage": 80.0}}}
+{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/base/logging.o"}}}
+{"id": {"targetCompleted": {"label": "//base:logging"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 100, "progress": {"resourceUsage": {"cpuUsage": 0.12, "memoryUsage": 120.0}}}
+{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/base/memory.o"}}}
+{"id": {"targetCompleted": {"label": "//base:memory"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 150, "progress": {"resourceUsage": {"cpuUsage": 0.18, "memoryUsage": 150.0}}}
+{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/base/threading.o"}}}
+{"id": {"targetCompleted": {"label": "//base:threading"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 200, "progress": {"resourceUsage": {"cpuUsage": 0.25, "memoryUsage": 180.0}}}
+{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/base/time.o"}}}
+{"id": {"targetCompleted": {"label": "//base:time"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 250, "progress": {"resourceUsage": {"cpuUsage": 0.30, "memoryUsage": 200.0}}}
+{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/base/status.o"}}}
+{"id": {"targetCompleted": {"label": "//base:status"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 300, "progress": {"resourceUsage": {"cpuUsage": 0.40, "memoryUsage": 250.0}}}
+{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/crypto/hash.o"}}}
+{"id": {"targetCompleted": {"label": "//crypto:hash"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 400, "progress": {"resourceUsage": {"cpuUsage": 0.55, "memoryUsage": 320.0}}}
+{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/crypto/encryption.o"}}}
+{"id": {"targetCompleted": {"label": "//crypto:encryption"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 500, "progress": {"resourceUsage": {"cpuUsage": 0.48, "memoryUsage": 380.0}}}
+{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/crypto/certificates.o"}}}
+{"id": {"targetCompleted": {"label": "//crypto:certificates"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 600, "progress": {"resourceUsage": {"cpuUsage": 0.62, "memoryUsage": 450.0}}}
+{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/storage/cache.o"}}}
+{"id": {"targetCompleted": {"label": "//storage:cache"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 700, "progress": {"resourceUsage": {"cpuUsage": 0.70, "memoryUsage": 520.0}}}
+{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/storage/filesystem.o"}}}
+{"id": {"targetCompleted": {"label": "//storage:filesystem"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 800, "progress": {"resourceUsage": {"cpuUsage": 0.85, "memoryUsage": 620.0}}}
+{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/storage/database.o"}}}
+{"id": {"targetCompleted": {"label": "//storage:database"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 900, "progress": {"resourceUsage": {"cpuUsage": 0.75, "memoryUsage": 680.0}}}
+{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/network/http.o"}}}
+{"id": {"targetCompleted": {"label": "//network:http"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 1000, "progress": {"resourceUsage": {"cpuUsage": 0.90, "memoryUsage": 750.0}}}
+{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/network/grpc.o"}}}
+{"id": {"targetCompleted": {"label": "//network:grpc"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 1100, "progress": {"resourceUsage": {"cpuUsage": 0.82, "memoryUsage": 800.0}}}
+{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/network/websocket.o"}}}
+{"id": {"targetCompleted": {"label": "//network:websocket"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 1200, "progress": {"resourceUsage": {"cpuUsage": 0.95, "memoryUsage": 920.0}}}
+{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/ml/tensor.o"}}}
+{"id": {"targetCompleted": {"label": "//ml:tensor"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 1400, "progress": {"resourceUsage": {"cpuUsage": 1.20, "memoryUsage": 1150.0}}}
+{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/ml/model.o"}}}
+{"id": {"targetCompleted": {"label": "//ml:model"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 1700, "progress": {"resourceUsage": {"cpuUsage": 1.45, "memoryUsage": 1450.0}}}
+{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/ml/training.o"}}}
+{"id": {"targetCompleted": {"label": "//ml:training"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 1900, "progress": {"resourceUsage": {"cpuUsage": 1.25, "memoryUsage": 1320.0}}}
+{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/ml/inference.o"}}}
+{"id": {"targetCompleted": {"label": "//ml:inference"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 2000, "progress": {"resourceUsage": {"cpuUsage": 1.10, "memoryUsage": 1200.0}}}
+{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/analytics/metrics.o"}}}
+{"id": {"targetCompleted": {"label": "//analytics:metrics"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 2200, "progress": {"resourceUsage": {"cpuUsage": 1.35, "memoryUsage": 1380.0}}}
+{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/analytics/dashboard.o"}}}
+{"id": {"targetCompleted": {"label": "//analytics:dashboard"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 2400, "progress": {"resourceUsage": {"cpuUsage": 1.50, "memoryUsage": 1500.0}}}
+{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/services/auth.o"}}}
+{"id": {"targetCompleted": {"label": "//services:auth"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 2500, "progress": {"resourceUsage": {"cpuUsage": 1.40, "memoryUsage": 1420.0}}}
+{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/services/user_management.o"}}}
+{"id": {"targetCompleted": {"label": "//services:user_management"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 2700, "progress": {"resourceUsage": {"cpuUsage": 1.60, "memoryUsage": 1650.0}}}
+{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/services/content.o"}}}
+{"id": {"targetCompleted": {"label": "//services:content"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 3000, "progress": {"resourceUsage": {"cpuUsage": 1.75, "memoryUsage": 1850.0}}}
+{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/services/recommendation.o"}}}
+{"id": {"targetCompleted": {"label": "//services:recommendation"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 3200, "progress": {"resourceUsage": {"cpuUsage": 1.30, "memoryUsage": 1600.0}}}
+{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/frontend/react_app"}}}
+{"id": {"targetCompleted": {"label": "//frontend:react_app"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 3300, "progress": {"resourceUsage": {"cpuUsage": 1.20, "memoryUsage": 1550.0}}}
+{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/frontend/static_assets"}}}
+{"id": {"targetCompleted": {"label": "//frontend:static_assets"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 3600, "progress": {"resourceUsage": {"cpuUsage": 1.85, "memoryUsage": 2100.0}}}
+{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/backend/api_server"}}}
+{"id": {"targetCompleted": {"label": "//backend:api_server"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 3900, "progress": {"resourceUsage": {"cpuUsage": 1.95, "memoryUsage": 2350.0}}}
+{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/backend/ml_worker"}}}
+{"id": {"targetCompleted": {"label": "//backend:ml_worker"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 4000, "progress": {"resourceUsage": {"cpuUsage": 1.70, "memoryUsage": 2200.0}}}
+{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/backend/data_processor"}}}
+{"id": {"targetCompleted": {"label": "//backend:data_processor"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 4100, "progress": {"resourceUsage": {"cpuUsage": 1.50, "memoryUsage": 2000.0}}}
+{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/tools/migration_tool"}}}
+{"id": {"targetCompleted": {"label": "//tools:migration_tool"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 4200, "progress": {"resourceUsage": {"cpuUsage": 1.40, "memoryUsage": 1900.0}}}
+{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/tools/benchmark_tool"}}}
+{"id": {"targetCompleted": {"label": "//tools:benchmark_tool"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 4250, "progress": {"resourceUsage": {"cpuUsage": 1.30, "memoryUsage": 1800.0}}}
+{"id": {"actionCompleted": {"primaryOutput": "bazel-out/bin/tools/deployment_helper"}}}
+{"id": {"targetCompleted": {"label": "//tools:deployment_helper"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 4400, "progress": {"resourceUsage": {"cpuUsage": 1.15, "memoryUsage": 1650.0}}}
+{"id": {"testResult": {"label": "//tests:unit_base"}}, "testResult": {"status": "PASSED", "run": 1, "attempt": 0}}
+{"id": {"targetCompleted": {"label": "//tests:unit_base"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 4500, "progress": {"resourceUsage": {"cpuUsage": 1.25, "memoryUsage": 1700.0}}}
+{"id": {"testResult": {"label": "//tests:unit_crypto"}}, "testResult": {"status": "PASSED", "run": 1, "attempt": 0}}
+{"id": {"targetCompleted": {"label": "//tests:unit_crypto"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 4600, "progress": {"resourceUsage": {"cpuUsage": 1.35, "memoryUsage": 1750.0}}}
+{"id": {"testResult": {"label": "//tests:unit_storage"}}, "testResult": {"status": "PASSED", "run": 1, "attempt": 0}}
+{"id": {"targetCompleted": {"label": "//tests:unit_storage"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 4700, "progress": {"resourceUsage": {"cpuUsage": 1.20, "memoryUsage": 1600.0}}}
+{"id": {"testResult": {"label": "//tests:unit_network"}}, "testResult": {"status": "FAILED", "run": 1, "attempt": 0}}
+{"id": {"targetCompleted": {"label": "//tests:unit_network"}}, "completed": {"success": false}}
+
+{"id": {"progress": {}}, "timeMillis": 4900, "progress": {"resourceUsage": {"cpuUsage": 1.45, "memoryUsage": 1850.0}}}
+{"id": {"testResult": {"label": "//tests:unit_ml"}}, "testResult": {"status": "PASSED", "run": 1, "attempt": 0}}
+{"id": {"targetCompleted": {"label": "//tests:unit_ml"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 5200, "progress": {"resourceUsage": {"cpuUsage": 1.60, "memoryUsage": 2000.0}}}
+{"id": {"testResult": {"label": "//tests:integration_api"}}, "testResult": {"status": "PASSED", "run": 1, "attempt": 0}}
+{"id": {"targetCompleted": {"label": "//tests:integration_api"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 5500, "progress": {"resourceUsage": {"cpuUsage": 1.75, "memoryUsage": 2200.0}}}
+{"id": {"testResult": {"label": "//tests:integration_ml"}}, "testResult": {"status": "FLAKY", "run": 1, "attempt": 0}}
+{"id": {"testResult": {"label": "//tests:integration_ml"}}, "testResult": {"status": "PASSED", "run": 1, "attempt": 1}}
+{"id": {"targetCompleted": {"label": "//tests:integration_ml"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 6000, "progress": {"resourceUsage": {"cpuUsage": 1.90, "memoryUsage": 2500.0}}}
+{"id": {"testResult": {"label": "//tests:e2e_full_stack"}}, "testResult": {"status": "PASSED", "run": 1, "attempt": 0}}
+{"id": {"targetCompleted": {"label": "//tests:e2e_full_stack"}}, "completed": {"success": true}}
+
+{"id": {"progress": {}}, "timeMillis": 6100, "progress": {"resourceUsage": {"cpuUsage": 1.50, "memoryUsage": 2200.0}}}
+{"id": {"progress": {}}, "timeMillis": 6200, "progress": {"resourceUsage": {"cpuUsage": 1.20, "memoryUsage": 1800.0}}}
+{"id": {"progress": {}}, "timeMillis": 6300, "progress": {"resourceUsage": {"cpuUsage": 0.90, "memoryUsage": 1400.0}}}
+{"id": {"progress": {}}, "timeMillis": 6400, "progress": {"resourceUsage": {"cpuUsage": 0.60, "memoryUsage": 1000.0}}}
+{"id": {"progress": {}}, "timeMillis": 6500, "progress": {"resourceUsage": {"cpuUsage": 0.30, "memoryUsage": 600.0}}}
+
+{"id": {"buildFinished": {}}, "buildFinished": {"overallResult": "SUCCESS", "finishTimeMillis": 1700006500}}
