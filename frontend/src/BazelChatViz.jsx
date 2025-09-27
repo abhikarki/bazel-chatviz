@@ -507,7 +507,6 @@ const BazelChatViz = () => {
     { id: 'overview', label: 'Overview', icon: BarChart3 },
     { id: 'dependency-graph', label: 'Dependency Graph', icon: Network },
     { id: 'performance', label: 'Resource Usage', icon: TrendingUp },
-    { id: 'chat', label: 'Chat', icon: MessageCircle },
   ];
 
   return (
