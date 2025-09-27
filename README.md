@@ -42,7 +42,7 @@ bazel build --build_event_json_file=build.json //your/target:here
 
 ### Backend (Python + FastAPI)
 - **BEP Parser**: Extracts targets, actions, tests from build event protocol JSON
-- **Chat Engine**: Rule-based NLP for interpreting user queries
+- **ChatBot**: RAG pipeline for context based Chat queries
 - **REST API**: Serves build data and handles chat queries
 - **Graph Generator**: Creates dependency graphs for visualization
 
