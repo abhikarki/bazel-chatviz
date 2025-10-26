@@ -1,6 +1,13 @@
 # Bazel ChatViz
+### Making build analysis as easy as having a conversation.
 
 A local tool for visualizing and chatting with Bazel build data. Analyze build event protocol (BEP) files through an interactive web interface with natural language queries.
+
+
+https://github.com/user-attachments/assets/617d93b3-2322-4a0c-a770-49f3be662ace
+
+## System Design
+<img width="1294" height="789" alt="bazel_sys_design_v1" src="https://github.com/user-attachments/assets/0ff80680-0494-4022-a8e2-23e11c2fd4ba" />
 
 ## Features
 
@@ -11,7 +18,6 @@ A local tool for visualizing and chatting with Bazel build data. Analyze build e
   - Cache hit/miss analysis
   - Performance metrics
   - Dependency exploration
-- **Local & Secure**: All data stays on your machine - no external API calls
 
 ### Guide
 
@@ -36,7 +42,7 @@ bazel build --build_event_json_file=build.json //your/target:here
 
 ### Backend (Python + FastAPI)
 - **BEP Parser**: Extracts targets, actions, tests from build event protocol JSON
-- **Chat Engine**: Rule-based NLP for interpreting user queries
+- **ChatBot**: RAG pipeline for context based Chat queries
 - **REST API**: Serves build data and handles chat queries
 - **Graph Generator**: Creates dependency graphs for visualization
 
@@ -99,5 +105,3 @@ npm run dev
 MIT License - see LICENSE file for details.
 
 ---
-
-**Bazel ChatViz** - Making build analysis as easy as having a conversation.
