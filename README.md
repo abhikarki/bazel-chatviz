@@ -18,7 +18,6 @@ https://github.com/user-attachments/assets/617d93b3-2322-4a0c-a770-49f3be662ace
   - Cache hit/miss analysis
   - Performance metrics
   - Dependency exploration
-- **Local & Secure**
 
 ### Guide
 
