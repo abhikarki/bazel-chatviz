@@ -6,7 +6,8 @@ A local tool for visualizing and chatting with Bazel build data. Analyze build e
 
 https://github.com/user-attachments/assets/617d93b3-2322-4a0c-a770-49f3be662ace
 
-
+## System Design
+<img width="1294" height="789" alt="bazel_sys_design_v1" src="https://github.com/user-attachments/assets/0ff80680-0494-4022-a8e2-23e11c2fd4ba" />
 
 ## Features
 
@@ -39,9 +40,6 @@ bazel build --build_event_json_file=build.json //your/target:here
 ```
 
 ## Architecture
-<img width="1294" height="789" alt="bazel_sys_design_v1" src="https://github.com/user-attachments/assets/0ff80680-0494-4022-a8e2-23e11c2fd4ba" />
-
-
 
 ### Backend (Python + FastAPI)
 - **BEP Parser**: Extracts targets, actions, tests from build event protocol JSON
