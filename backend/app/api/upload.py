@@ -1,45 +1,62 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, status
 from app.tasks.tasks import process_bep_file
-import os
-import uuid
-import aiofiles
 from pathlib import Path
+import aiofiles
+import uuid
 
 router = APIRouter()
-logger = logging.getLogger("bazel-chatviz")
 
-UPLOAD_DIR = os.getenv("UPLOAD_DIR", "tmp/uploads")
-os.makedirs(UPLOAD_DIR, exist_ok = True)
+TEMP_DIR = Path("/tmp/bep_uploads")
+TEMP_DIR.mkdir(parents=True, exist_ok=True)  # fix the comma typo
 
-@router.post("/")
+@router.post("/", status_code=status.HTTP_202_ACCEPTED)
 async def upload_bep(file: UploadFile = File(...)):
-    # Accept a BEP file, save it temporarily and trigger
-    # a celery task to process it into a vector database
-
-    # validate file type
-    if not file.filename.endswith(".bep") and not file.filename.endswith(".json"):
-        raise HTTPException(status_code=400, detail="Invalid file type. Must be .bep or .json")
-    
-    # generate unique path
-    file_id = str(uuid.uuid4())
-    safe_filename = f"{file_id}_{file.filename}"
-    path = os.path.join(UPLOAD_DIR, safe_filename)
-
-    
-    
-    try:
-        with open(path, "wb") as f:
-            while chunk := await file.read(1024*1024):
-                f.write(chunk)
-
-        task = process_bep_file.delay(path)
-        logger.info(f"Queued BEP file for processing: {safe_filename}, task_id={task.id}")
-
-        return {"status": "queued", "task_id": task.id, "file": safe_filename}
-    
-    except Exception as e:
-        logger.exception(f"Error uploading BEP file : {e}")
+    """
+    Accept a BEP file upload, persist it to a temp directory, and enqueue
+    a Celery task to process it.
+    """
+    # Optional: basic content-type/extension guardrail
+    # (Adjust these to what your BEP actually is.)
+    allowed_types = {"application/octet-stream", "application/json"}
+    if file.content_type not in allowed_types:
         raise HTTPException(
-            status_code = status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to proces upload"
+            status_code=415, detail=f"Unsupported content type: {file.content_type}"
         )
+
+    # Always generate a unique, safe filename; keep original separately
+    original_name = Path(file.filename).name if file.filename else "upload.bin"
+    unique_name = f"{uuid.uuid4().hex}__{original_name}"
+    temp_path = TEMP_DIR / unique_name
+    tmp_staging = TEMP_DIR / (unique_name + ".part")  # write-then-move
+
+    try:
+        # Stream to disk in chunks (1 MiB)
+        async with aiofiles.open(tmp_staging, "wb") as f:
+            while chunk := await file.read(1024 * 1024):
+                await f.write(chunk)
+
+        # Atomic move into place
+        tmp_staging.replace(temp_path)
+
+        # Enqueue background processing
+        process_bep_file.delay(str(temp_path), original_name)
+
+        return {
+            "status": "processing",
+            "file_saved_as": temp_path.name,
+            "original_filename": original_name,
+            "message": "Upload received. Processing has begun.",
+        }
+
+    except HTTPException:
+        # re-raise explicit HTTP errors
+        raise
+    except Exception as e:
+        # Cleanup partial files if something failed
+        try:
+            if tmp_staging.exists():
+                tmp_staging.unlink(missing_ok=True)
+        finally:
+            raise HTTPException(status_code=500, detail="Failed to process file.") from e
+    finally:
+        await file.close()
