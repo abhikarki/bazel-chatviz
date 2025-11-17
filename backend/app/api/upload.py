@@ -71,7 +71,6 @@ async def init_upload(req: InitUploadRequest):
     )
 
 # when client says upload is done, we will assign Celery job
-
 @router.post("/complete", status_code=status.HTTP_202_ACCEPTED)
 async def complete_upload(req: CompleteUploadRequest):
     record = get_upload_record(req.file_id)

@@ -26,6 +26,7 @@ class UploadRecord:
 UPLOAD_STORE: Dict[str, UploadRecord] = {}
 
 
+# create and upload entry when upload/init is called
 def create_upload_record(file_id: str, s3_key: str, original_filename: str) -> UploadRecord:
     record = UploadRecord(
         file_id = file_id,
@@ -36,10 +37,11 @@ def create_upload_record(file_id: str, s3_key: str, original_filename: str) -> U
     return record
 
 
+# Retrieve metadata for particular upload
 def get_upload_record(file_id: str) -> Optional[UploadRecord]:
     return UPLOAD_STORE.get(file_id)
 
-
+# updates the lifecycle of upload during processing.
 def update_upload_status(file_id: str, status: UploadStatus, error_message: Optional[str] = None):
     record = UPLOAD_STORE.get(file_id)
     if not record:

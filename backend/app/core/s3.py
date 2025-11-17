@@ -9,15 +9,19 @@ _s3_client = boto3.client(
     aws_secret_access_key = settings.aws_secret_access_key,
 )
 
-def generate_presigned_put_url(key: str, content_type: str, expires_in: int = 300) -> str:
-    # Generate a presigned URL for PUT upload to a fixed S3 key
-    return _s3_client.generate_presigned_url(
-        ClientMethod = "put_object",
-        Params = {
-            "Bucket": settings.s3_bucket,
-            "key": key,
-            "ContentType": content_type,
+def generate_presigned_post(key: str, content_type: str, max_size: int, expires_in: int = 300) -> dict:
+    # Generate a presigned URL for POST upload to a fixed S3 key
+    # we enforce conditions for file type and size for the client's uploads to s3.
+    return _s3_client.generate_presigned_post(
+        Bucket=settings.s3_bucket,
+        key=key,
+        Fields={
+            "Content-Type": content_type,
         },
+        Conditions=[
+            {"Content-Type": content_type},
+            ["content-length-range", 0, max_size],
+        ],
         ExpiresIn = expires_in,
     )
 
