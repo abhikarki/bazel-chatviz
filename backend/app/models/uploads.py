@@ -17,6 +17,8 @@ class UploadRecord:
     file_id: str
     s3_key: str
     original_filename: str
+    content_type: str
+    max_size: int
     status: UploadStatus = UploadStatus.UPLOADING
     created_at: datetime = field(default_factory=datetime.utcnow)
     completed_at: Optional[datetime] = None
@@ -27,11 +29,13 @@ UPLOAD_STORE: Dict[str, UploadRecord] = {}
 
 
 # create and upload entry when upload/init is called
-def create_upload_record(file_id: str, s3_key: str, original_filename: str) -> UploadRecord:
+def create_upload_record(file_id: str, s3_key: str, original_filename: str, content_type: str, max_size: int) -> UploadRecord:
     record = UploadRecord(
         file_id = file_id,
         s3_key = s3_key,
         original_filename = original_filename,
+        content_type = content_type,
+        max_size = max_size,
     )
     UPLOAD_STORE[file_id] = record
     return record

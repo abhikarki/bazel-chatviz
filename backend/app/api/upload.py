@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 import uuid
 
-from app.core.s3 import generate_presigned_put_url, object_exists
+from app.core.s3 import generate_presigned_post, object_exists
 from app.core.config import settings
 from app.models.uploads import(
     create_upload_record,
@@ -24,7 +24,8 @@ class InitUploadRequest(BaseModel):
 
 class InitUploadResponse(BaseModel):
     file_id: str
-    upload_url: str
+    url: str        # s3 POST URL
+    fields: dict    # form fields that must be sent with the file
     expires_in: int
 
 class CompleteUploadRequest(BaseModel):
@@ -55,18 +56,26 @@ async def init_upload(req: InitUploadRequest):
     # s3_key = f"bep-files/{user_id}/{file_id}.json"
     s3_key = f"bef-files/{file_id}.json"
 
-    presigned_url = generate_presigned_put_url(
+    presigned = generate_presigned_post(
         key=s3_key,
         content_type=req.content_type,
+        max_size = max_size,
         expires_in=300,  #seconds
     )
 
     #store metadata
-    create_upload_record(file_id=file_id, s3_key=s3_key, original_filename=req.filename)
+    create_upload_record(
+        file_id=file_id,
+        s3_key=s3_key,
+        original_filename=req.filename,
+        content_type = req.content_type,
+        max_size = max_size,
+        )
 
     return InitUploadResponse(
         file_id = file_id,
-        upload_url = presigned_url,
+        url = presigned["url"],
+        fields = presigned["fields"],
         expires_in = 300,
     )
 
