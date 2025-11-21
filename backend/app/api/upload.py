@@ -134,6 +134,7 @@ async def get_artifact_urls(file_id: str):
     # processed/{file_id}/graph.json
     # processed/{file_id}/resource-usage.json
 
+    # currently the base url is hardcoded, should instead use the base location from the record itself
     base = f"processed/{file_id}/"
 
     files = {

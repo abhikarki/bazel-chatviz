@@ -58,19 +58,37 @@ def process_bep_file(self, file_id: str, s3_key: str) -> None:
 
         
         # Build summary
-        processed = parser.export_summary()
+        processed_summary = parser.export_summary()
+        processed_graph = parser.export_graph()
+        processed_resource_usage = parser.export_resource_usage()
 
-        # send processed result back to S3
-        output_key = f"processed/{file_id}.json"
+        base_key = f"processed/{file_id}/"
+
+        # Putting the results back to s3
         _s3_client.put_object(
-            Bucket=settings.s3_bucket,
-            key=output_key,
-            Body=json.dumps(processed).encode("utf-8"),
-            ContentType="application/json"
+            Bucket = settings.s3_bucket,
+            Key = base_key + "summary.json",
+            Body = json.dumps(processed_summary).encode("utf-8"),
+            ContentType = "application/json",
         )
 
-        update_upload_status(file_id, UploadStatus.COMPLETED, output_location=output_key)
-        log.info("Processed BEP file %s", s3_key, output_key)
+        _s3_client.put_object(
+            Bucket = settings.s3_bucket,
+            Key = base_key + "graph.json",
+            Body = json.dumps(processed_graph).encode("utf-8"),
+            ContentType = "application/json",
+        )
+
+        _s3_client.put_object(
+            Bucket = settings.s3_bucket,
+            Key = base_key + "resource-usage.json",
+            Body = json.dumps(processed_resource_usage).encode("utf-8"),
+            ContentType = "application/usage",
+        )
+
+
+        update_upload_status(file_id, UploadStatus.COMPLETED, output_location=base_key)
+        log.info("Processed BEP file %s", s3_key, base_key)
 
     except(BotoCoreError, ClientError) as s3_err:
         log.exception("s3 error while processing %s", s3_key, s3_err)

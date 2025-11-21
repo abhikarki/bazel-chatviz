@@ -23,6 +23,7 @@ class UploadRecord:
     created_at: datetime = field(default_factory=datetime.utcnow)
     completed_at: Optional[datetime] = None
     error_message: Optional[str] = None
+    output_json_url: Optional[str] = None
 
 # in-memory store for now, will replace with real DB later.
 UPLOAD_STORE: Dict[str, UploadRecord] = {}
