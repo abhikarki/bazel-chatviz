@@ -208,3 +208,94 @@ class BEPParser:
                     "memory": mem,
                 }
             )
+    
+    def export_resource_usage(self) -> bytes:
+        times: List[Optional[float]] = []
+        cpu: List[Optional[float]] = []
+        mem: List[Optional[float]] = []
+
+        for point in self.resource_series:
+            times.append(point.get("time"))
+            cpu.append(point.get("cpu"))
+            mem.append(point.get("memory"))
+
+        payload = {
+            "time": times,
+            "cpu" : cpu,
+            "memory": mem,
+            "count": len(times),
+        }
+
+        return json.dumps(payload).encode("utf-8")
+    
+    # Dependency graph
+    def export_graph(self) -> bytes:
+        nodes: List[Dict[str, Any]] = []
+        edges: List[Dict[str, Any]] = []
+
+        # replace the "/" and ":" with "_" that can be problematic for some graph visualization libraries.
+        def safe_id(s: str) -> str:
+            return s.replace("/", "_").replace(":", "_")
+        
+        # Target nodes
+        for label, target in self.targets.items():
+            gid_parts = label.split("/")
+            group = gid_parts[1] if len(gid_parts) > 1 else "root"
+
+            nodes.append({
+                "id": safe_id(label),
+                "originalId": label,
+                "label": label.split("/")[-1],
+                "type": "target",
+                "status": target.status,
+                "kind": target.kind,
+                "group": group,
+            })
+
+            for dep in sorted(target.dependencies):
+                edges.append({
+                    "id": f"{safe_id(label)}-{safe_id(dep)}",
+                    "source": safe_id(dep),
+                    "target": safe_id(label),
+                    "type": "dependency",
+                })
+        
+        for test_label, test_data in self.test_results.items():
+            nodes.append({
+                "id": safe_id(test_label) + "__test",
+                "originalId": test_label,
+                "label": test_label.split("/")[-1],
+                "type": "test",
+                "status": "passed" if test_data.get("passed") else "failed",
+                "group": "tests",
+            })
+
+            edges.append({
+                "id": f"{safe_id(test_label)}__test->{safe_id(test_label)}",
+                "source": safe_id(test_label) + "__test",
+                "target": safe_id(test_label),
+                "type": "test",
+            })
+        
+        payload = {
+            "nodes":  nodes,
+            "edges": edges,
+            "metadata": {
+                "totalTargets": len(self.targets),
+                "totalTests": len(self.test_results),
+                "actionSeen": self.action_count,
+                "groups": sorted({n["group"] for n in nodes}),
+            }
+        }
+
+        return json.dumps(payload).encode("utf-8")
+
+
+    def export_summary(self) -> bytes:
+        payload = {
+            "targets": len(self.targets),
+            "tests": len(self.test_results),
+            "actions": self.action_count,
+            "has_resource_usage": len(self.resource_series) > 0,
+        }
+        return json.dumps(payload).encode("utf-8")
