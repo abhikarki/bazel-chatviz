@@ -25,7 +25,7 @@ def process_bep_file(self, file_id: str, s3_key: str) -> None:
         update_upload_status(file_id, UploadStatus.PROCESSING)
 
         # contact s3 for the file
-        obj = _s3_client.get_object(Bucket=settings.s3_bucket, key=s3_key)
+        obj = _s3_client.get_object(Bucket=settings.s3_bucket, Key=s3_key)
         # extract the streaming object from the S3 response. This object is a file-like handle
         # that starts downloading the data only when the code iterates over it. 
         body = obj["Body"]
@@ -50,11 +50,11 @@ def process_bep_file(self, file_id: str, s3_key: str) -> None:
 
 
         # RAG processing to be implemented.
-        try:
-            if getattr(settings, "enable_rag_processing", True):
-                parser.rag_processor.process_bep_data(parser.events)
-        except Exception as rag_error:
-            log.exception("RAG processing failed; continuing: %s", rag_error)
+        # try:
+        #     if getattr(settings, "enable_rag_processing", True):
+        #         parser.rag_processor.process_bep_data(parser.events)
+        # except Exception as rag_error:
+        #     log.exception("RAG processing failed; continuing: %s", rag_error)
 
         
         # Build summary
@@ -70,7 +70,7 @@ def process_bep_file(self, file_id: str, s3_key: str) -> None:
         )
 
         update_upload_status(file_id, UploadStatus.COMPLETED, output_location=output_key)
-        log.infor("Processed BEP file %s", s3_key, output_key)
+        log.info("Processed BEP file %s", s3_key, output_key)
 
     except(BotoCoreError, ClientError) as s3_err:
         log.exception("s3 error while processing %s", s3_key, s3_err)

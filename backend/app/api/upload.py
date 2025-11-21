@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 import uuid
 
-from app.core.s3 import generate_presigned_post, object_exists
+from app.core.s3 import generate_presigned_post, object_exists, generate_presigned_get
 from app.core.config import settings
 from app.models.uploads import(
     create_upload_record,
@@ -36,6 +36,13 @@ class UploadStatusResponse(BaseModel):
     status: UploadStatus
     original_filename: str
     error_message: str | None = None
+
+class ArtifactURLsResponse(BaseModel):
+    file_id: str
+    summary_url: str | None = None
+    graph_url: str | None = None
+    resource_usage_url: str | None = None
+
 
 
 @router.post("/init", response_model=InitUploadResponse, status_code=status.HTTP_201_CREATED)
@@ -111,3 +118,32 @@ async def get_upload_record(file_id: str):
         original_filename=record.original_filename,
         error_message=record.error_message,
     )
+
+
+@router.get("/artifacts/{file_id}", response_model=ArtifactURLsResponse)
+async def get_artifact_urls(file_id: str):
+    record = get_upload_record(file_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Unknown file_id")
+    
+    if record.status != UploadStatus.COMPLETED:
+        raise HTTPException(status_code=400, detail="File not processed")
+    
+    # Celery wrote all artifacts to:
+    # processed/{file_id}/summary.json
+    # processed/{file_id}/graph.json
+    # processed/{file_id}/resource-usage.json
+
+    base = f"processed/{file_id}/"
+
+    files = {
+        "summary_url":base + "summary.json",
+        "graph_url": base + "graph.json",
+        "resource_usage_url": base + "resource-usage.json",
+    }
+
+    urls = {}
+    for name, s3_key in files.items():
+        urls[name] = generate_presigned_get(s3_key)
+
+    return ArtifactURLsResponse(file_id=file_id, **urls)

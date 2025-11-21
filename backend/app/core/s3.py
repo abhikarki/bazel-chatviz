@@ -25,6 +25,15 @@ def generate_presigned_post(key: str, content_type: str, max_size: int, expires_
         ExpiresIn = expires_in,
     )
 
+
+def generate_presigned_get(key: str, expires_in: int = 300) -> str:
+    return _s3_client.generate_presigned_url(
+        ClientMethod = "get_object",
+        Params ={"Bucket": settings.s3_bucket, "Key": key},
+        ExpiresIn=expires_in,
+    )
+
+
 def object_exists(key: str) -> bool:
     # check existence of an s3 object via head request
     try:
