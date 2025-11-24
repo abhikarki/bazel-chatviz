@@ -102,8 +102,3 @@ def process_bep_file(self, file_id: str, s3_key: str) -> None:
         log.exception("Fatal error processing %s", s3_key, e)
         update_upload_status(file_id, UploadStatus.FAILED, error_message=str(e))
         raise
-    
-
-        
-
-
