@@ -1,0 +1,17 @@
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-multipart==0.0.7
+pydantic==2.4.2
+pydantic-settings==2.0.3
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+aiofiles==23.2.1
+langchain==0.1.0
+openai==0.28.1  # Changed to older stable version
+python-dotenv==1.0.0
+tiktoken==0.5.2
+faiss-cpu==1.12.0
+celery==5.3.6
+redis==5.0.1
+flower==2.0.1
+python-dotenv==1.0.0
