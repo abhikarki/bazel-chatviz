@@ -1,0 +1,65 @@
+version: '3.8'
+
+
+services:
+  #Upload service
+  uploader:
+    context: ./services/uploader
+    dockerfile: Dockerfile
+  ports:
+    - "{UPLOAD_PORT_HOST}:8001"
+  environment:
+    - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+    - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+    - S3_BUCKET=${S3_BUCKET}
+  depends_on:
+    - redis
+  
+  parser:
+    build:
+      context: ./services/parser
+      dockerfile: Dockerfile
+    ports:
+      - "{PARSER_PORT_HOST}:8000"
+    depends_on:
+      - redis
+
+  rag-chat:
+    build:
+      context: ./services/rag-chat
+      dockerfile: Dockerfile
+    ports:
+      - "{CHAT_PORT_HOST}:8002"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    
+  celery-worker:
+    build:
+      context: ./services/celery_worker
+      dockerfile: Dockerfile
+    depends_on:
+      - redis
+    environment:
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND={CELERY_RESULT_BACKEND}
+    
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "{REDIS_PORT_HOST}:6379"
+    volumes:
+      - redis_data:/data
+    
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "{FRONTEND_PORT_HOST}:3000"
+    depends_on:
+      - uploader
+      - parser
+      - rag-chat
+  
+  volumes:
+    redis_data:
