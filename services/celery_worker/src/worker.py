@@ -1,1 +1,0 @@
-# celery app and import tasks.

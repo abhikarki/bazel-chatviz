@@ -386,6 +386,7 @@ const BazelChatViz = () => {
   const [graphData, setGraphData] = useState({ nodes: [], edges: [] });
   const [selectedNode, setSelectedNode] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
+  const [hasData, setHasData] = useState(false);
 
   const fetchStats = async () => {
     try {
@@ -411,44 +412,51 @@ const BazelChatViz = () => {
     }
   };
 
-  const handleFileUpload = async (file) => {
+  async function handleFileUpload(file){
     setIsUploading(true);
-    
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      
-      const response = await fetch(`${API_BASE}/load-bep`, {
-        method: 'POST',
-        body: formData,
+
+    try{
+      const initRes = await fetch("/upload/init", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          filename: file.name,
+          content_type: file.type || "application/octet-stream",
+          size: file.size,
+        }),
       });
-      
-      if (response.ok) {
-        const result = await response.json();
-        setMessages([{
-          type: 'system',
-          content: `✓ ${result.message}. Found ${result.stats.targets} targets, ${result.stats.actions} actions, and ${result.stats.tests} tests.`,
-          metadata: result.stats
-        }]);
-        
-        await fetchStats();
-        await fetchGraph();
-      } else {
-        const error = await response.json();
-        setMessages([{
-          type: 'system',
-          content: `❌ Failed to load file: ${error.detail}`,
-        }]);
+
+      if(!initRes.ok){
+        const err = await initRes.json();
+        throw new Error(err.detail || "file init failed");
       }
-    } catch (error) {
-      setMessages([{
-        type: 'system',
-        content: `❌ Error uploading file: ${error.message}`,
-      }]);
-    } finally {
+
+      const {file_id, url, fields, expires_in} = await initRes.json();
+
+      const formData = new formData();
+      Object.entries(fields).forEach(([k, v]) =>
+        formData.append(k, v)
+      );
+      formData.append("file", file);
+
+      const s3Res = await fetch(url, {
+        method: "POST",
+        body: formData,
+      })
+
+      if(!s3Res.ok){
+        throw new Error("File upload to S3 failed");
+      }
+      setHasData(true);
+    }
+    catch(e){
+      console.error(e);
+      alert(e.message);
+    }
+    finally{
       setIsUploading(false);
     }
-  };
+  }
 
   const handleSendMessage = async (message) => {
     const userMessage = { type: 'user', content: message };
@@ -485,13 +493,13 @@ const BazelChatViz = () => {
         const error = await response.json();
         setMessages(prev => [...prev, {
           type: 'system',
-          content: `❌ Error: ${error.detail}`
+          content: `Error: ${error.detail}`
         }]);
       }
     } catch (error) {
       setMessages(prev => [...prev, {
         type: 'system',
-        content: `❌ Network error: ${error.message}`
+        content: `Network error: ${error.message}`
       }]);
     } finally {
       setIsLoading(false);
@@ -522,7 +530,7 @@ const BazelChatViz = () => {
             <CompactFileUploader 
               onFileUpload={handleFileUpload}
               isUploading={isUploading}
-              hasData={stats !== null}
+              hasData={hasData}
             />
           </div>
         </div>

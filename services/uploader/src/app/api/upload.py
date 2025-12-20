@@ -2,6 +2,8 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 import uuid
 
+# Import the celery_app instance from the main application file
+from app.celery_app import celery_app
 from app.core.s3 import generate_presigned_post, object_exists, generate_presigned_get
 from app.core.config import settings
 from app.models.uploads import(
@@ -10,7 +12,6 @@ from app.models.uploads import(
     update_upload_status,
     UploadStatus,
 )
-from app.tasks.tasks import process_bep_file
 
 router = APIRouter(prefix="/upload", tags=["upload"])
 
@@ -61,12 +62,12 @@ async def init_upload(req: InitUploadRequest):
     file_id = uuid.uuid4().hex
     # Late we can include user_id here once we set up the auth
     # s3_key = f"bep-files/{user_id}/{file_id}.json"
-    s3_key = f"bef-files/{file_id}.json"
+    s3_key = f"bep-files/{file_id}.json"
 
     presigned = generate_presigned_post(
         key=s3_key,
         content_type=req.content_type,
-        max_size = max_size,
+        max_size=max_size,
         expires_in=300,  #seconds
     )
 
@@ -97,9 +98,13 @@ async def complete_upload(req: CompleteUploadRequest):
     if not object_exists(record.s3_key):
         raise HTTPException(status_code=400, detail="File not found in storage yet")
     
-    # Update status and enqueue Celery job
+    # Update status and enqueue Celery job by sending a task by name
+    # The task "src.tasks.tasks.process_bep_file" is discovered by the celery-worker.
     update_upload_status(req.file_id, UploadStatus.PROCESSING)
-    process_bep_file.delay(file_id=req.file_id, s3_key=record.s3_key)
+    celery_app.send_task(
+        "src.tasks.tasks.process_bep_file",
+        args=[req.file_id, record.s3_key],
+    )
 
     return {"status": "processing", "file_id": req.file_id}
 
@@ -107,7 +112,7 @@ async def complete_upload(req: CompleteUploadRequest):
 
 # allowing frontend to poll
 @router.get("/status/{file_id}", response_model=UploadStatusResponse)
-async def get_upload_record(file_id: str):
+async def get_upload_status(file_id: str):
     record = get_upload_record(file_id)
     if not record:
         raise HTTPException(status_code=404, detail="Unknown file_id")

@@ -3,18 +3,6 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, Iterable
-from pydantic import BaseModel
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-import uvicorn
-
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.embeddings import OpenAIEmbeddings
-from langchain.vectorstores import FAISS
-from langchain.chat_models import ChatOpenAI
-from langchain.chains import ConversationalRetrievalChain
-from langchain.memory import ConversationBufferMemory
-from dotenv import load_dotenv
 
 @dataclass
 class Target:
@@ -151,16 +139,6 @@ class BEPParser:
     
 
     def maybe_extract_resource_point(self, event: Dict[str, Any]) -> None:
-        """
-        Bazel’s BEP does not have a single canonical resource-usage schema across all versions.
-        We attempt multiple plausible places/keys and store whatever we find:
-
-          time_ms: event.get("timeMillis") | event.get("timestamp") | None
-          cpu:  event["progress"]["resourceUsage"]["cpuUsage"] | event["buildMetrics"]["timingMetrics"]["cpu"] | ...
-          mem:  event["progress"]["resourceUsage"]["memoryUsage"] | event["buildMetrics"]["memoryMetrics"]["peak"] | ...
-
-        If none are found, we skip the point.
-        """
         get_num = lambda x: float(x) if isinstance(x, (int, float)) else None
 
         # Timestamp: prefer timeMillis, then timestamp

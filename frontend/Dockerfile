@@ -18,7 +18,7 @@ RUN npm run build
 FROM nginx:alpine AS production
 
 # copy the nginx.conf to standard Nginx configuration directory
-COPY nginx:conf /etc/nginx/conf.d/default.conf
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # only copy lightweight compiled files from /app/dist/ and place them in nginx default serving directory
 COPY --from=build /app/dist /usr/share/nginx/html
@@ -27,4 +27,4 @@ COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 80
 
 # run the nginx web server
-CMD ["nginx", "-g", "daemon"]
+CMD ["nginx", "-g", "daemon off;"]

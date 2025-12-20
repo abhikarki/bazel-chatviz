@@ -4,23 +4,17 @@ version: '3.8'
 services:
   #Upload service
   uploader:
-    context: ./services/uploader
-    dockerfile: Dockerfile
-  ports:
-    - "{UPLOAD_PORT_HOST}:8001"
-  environment:
-    - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-    - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-    - S3_BUCKET=${S3_BUCKET}
-  depends_on:
-    - redis
-  
-  parser:
     build:
-      context: ./services/parser
+      context: ./services/uploader
       dockerfile: Dockerfile
     ports:
-      - "{PARSER_PORT_HOST}:8000"
+      - "${UPLOAD_PORT_HOST}:8001"
+    environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - S3_BUCKET=${S3_BUCKET}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
     depends_on:
       - redis
 
@@ -29,7 +23,7 @@ services:
       context: ./services/rag-chat
       dockerfile: Dockerfile
     ports:
-      - "{CHAT_PORT_HOST}:8002"
+      - "${CHAT_PORT_HOST}:8002"
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     
@@ -40,13 +34,16 @@ services:
     depends_on:
       - redis
     environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - S3_BUCKET=${S3_BUCKET}
       - CELERY_BROKER_URL=${CELERY_BROKER_URL}
-      - CELERY_RESULT_BACKEND={CELERY_RESULT_BACKEND}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
     
   redis:
     image: redis:7-alpine
     ports:
-      - "{REDIS_PORT_HOST}:6379"
+      - "${REDIS_PORT_HOST}:6379"
     volumes:
       - redis_data:/data
     
@@ -55,11 +52,9 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "{FRONTEND_PORT_HOST}:3000"
+      - "3004:80"
     depends_on:
       - uploader
-      - parser
-      - rag-chat
   
-  volumes:
-    redis_data:
+volumes:
+  redis_data:

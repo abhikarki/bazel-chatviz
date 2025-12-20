@@ -1,12 +1,14 @@
+# Required for RAGEngine text splitting
+langchain_text_splitters
 fastapi==0.109.0
 uvicorn[standard]==0.27.0
 pydantic-settings==2.0.3
-langchain=0.1.0
-langchain-openai==0.0.5
-langchain-commuity==0.0.13
-openai?=1.0.0
+langchain
+langchain-openai
+langchain-community
+openai==1.10.0
 tiktoken==0.5.2
-faiss-cpu==1.7.4
+faiss-cpu==1.13.1
 python-dotenv==1.0.0
 redis==5.0.1
 boto3==1.34.0

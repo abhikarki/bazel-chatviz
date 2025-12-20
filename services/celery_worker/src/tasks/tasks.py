@@ -3,13 +3,13 @@ import boto3
 import json
 import logging
 from botocore.exceptions import BotoCoreError, ClientError
-from app.core.config import settings
-from app.models.uploads import update_upload_status, UploadStatus
-from app.services.bep_parser import BEPParser
+from src.core.config import settings
+from src.models.uploads import update_upload_status, UploadStatus
+from src.services.bep_parser import BEPParser
 
 log = logging. getLogger(__name__)
 
-app = Celery("tasks", broker = getattr(settings, "celery_broker_url", "pyamqp://guest@rabbitmq//"))
+app = Celery("tasks", broker=settings.celery_broker_url)
 
 
 _s3_client = boto3.client(
@@ -83,7 +83,7 @@ def process_bep_file(self, file_id: str, s3_key: str) -> None:
             Bucket = settings.s3_bucket,
             Key = base_key + "resource-usage.json",
             Body = json.dumps(processed_resource_usage).encode("utf-8"),
-            ContentType = "application/usage",
+            ContentType = "application/json",
         )
 
 
