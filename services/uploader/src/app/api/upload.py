@@ -65,7 +65,7 @@ async def init_upload(req: InitUploadRequest):
     s3_key = f"bep-files/{file_id}.json"
 
     presigned = generate_presigned_post(
-        key=s3_key,
+        Key=s3_key,
         content_type=req.content_type,
         max_size=max_size,
         expires_in=300,  #seconds
@@ -101,10 +101,11 @@ async def complete_upload(req: CompleteUploadRequest):
     # Update status and enqueue Celery job by sending a task by name
     # The task "src.tasks.tasks.process_bep_file" is discovered by the celery-worker.
     update_upload_status(req.file_id, UploadStatus.PROCESSING)
-    celery_app.send_task(
+    taskRes = celery_app.send_task(
         "src.tasks.tasks.process_bep_file",
         args=[req.file_id, record.s3_key],
     )
+    print("the task id is : ", taskRes)   # debugging if the task was queued properly
 
     return {"status": "processing", "file_id": req.file_id}
 
