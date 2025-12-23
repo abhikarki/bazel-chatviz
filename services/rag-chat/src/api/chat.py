@@ -21,10 +21,11 @@ class IndexRequest(BaseModel):
     file_id: str
     s3_key: str
 
+# Chat endpoint
 @router.post("/query", response_model=QueryResponse)
 async def query_build(request:QueryRequest):
     try:
-        result = await rag.engine.query(
+        result = await rag_engine.query(
             query = request.query,
             file_id = request.file_id,
             session_id = request.session_id
@@ -33,13 +34,6 @@ async def query_build(request:QueryRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     
-@router.post("/index")
-async def index_build_data(request : IndexRequest):
-    try:
-        await rag_engine.index_build(request.file_id, request.s3_key)
-        return {"status" : "indexed", "file_id" : request.file_id}
-    except Exception as e:
-        raise HTTPException(status_code = 500, detail = str(e))
     
 @router.delete("/session/{session_id}")
 async def clear_session(session_id: str):
