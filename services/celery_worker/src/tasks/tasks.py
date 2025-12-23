@@ -1,4 +1,5 @@
 from celery import Celery
+import os
 import boto3
 import json
 import logging
@@ -7,9 +8,10 @@ from src.core.config import settings
 from src.models.uploads import update_upload_status, UploadStatus
 from src.services.bep_parser import BEPParser
 
-log = logging. getLogger(__name__)
+os.environ['FORKED_BY_MULTIPROCESSING'] = '1'
+log = logging.getLogger(__name__)
 
-app = Celery("tasks", broker=settings.celery_broker_url)
+app = Celery("src", broker=settings.celery_broker_url, backend=settings.celery_result_backend)
 
 
 _s3_client = boto3.client(
@@ -17,10 +19,13 @@ _s3_client = boto3.client(
     region_name = settings.aws_region,
     aws_access_key_id = settings.aws_access_key_id,
     aws_secret_access_key = settings.aws_secret_access_key,
+    endpoint_url = "http://localhost:4566"
 )
 
-@app.task(bind=True, max_retries=3, default_retry_delay=5)
+# register the task with unique name - the path
+@app.task(name="process_bep_file", bind=True, max_retries=1, default_retry_delay=5)
 def process_bep_file(self, file_id: str, s3_key: str) -> None:
+    print("here")
     try:
         update_upload_status(file_id, UploadStatus.PROCESSING)
 
@@ -58,6 +63,7 @@ def process_bep_file(self, file_id: str, s3_key: str) -> None:
 
         
         # Build summary
+        # the export functions return bytes
         processed_summary = parser.export_summary()
         processed_graph = parser.export_graph()
         processed_resource_usage = parser.export_resource_usage()
@@ -68,27 +74,27 @@ def process_bep_file(self, file_id: str, s3_key: str) -> None:
         _s3_client.put_object(
             Bucket = settings.s3_bucket,
             Key = base_key + "summary.json",
-            Body = json.dumps(processed_summary).encode("utf-8"),
+            Body = processed_summary,
             ContentType = "application/json",
         )
 
         _s3_client.put_object(
             Bucket = settings.s3_bucket,
             Key = base_key + "graph.json",
-            Body = json.dumps(processed_graph).encode("utf-8"),
+            Body = processed_graph,
             ContentType = "application/json",
         )
 
         _s3_client.put_object(
             Bucket = settings.s3_bucket,
             Key = base_key + "resource-usage.json",
-            Body = json.dumps(processed_resource_usage).encode("utf-8"),
+            Body = processed_resource_usage,
             ContentType = "application/json",
         )
 
 
         update_upload_status(file_id, UploadStatus.COMPLETED, output_location=base_key)
-        log.info("Processed BEP file %s", s3_key, base_key)
+        log.info("Processed BEP file %s -> %s", s3_key, base_key)
 
     except(BotoCoreError, ClientError) as s3_err:
         log.exception("s3 error while processing %s", s3_key, s3_err)

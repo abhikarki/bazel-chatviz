@@ -1,6 +1,8 @@
-.env
-
-
-
-/venv312
-
+__pycache__/
+*.pyc
+venv312/
+*.env
+setup_localstack_s3.py
+.DS_Store
+.idea/
+.vscode/

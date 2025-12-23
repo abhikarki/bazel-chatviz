@@ -204,6 +204,7 @@ class BEPParser:
             "count": len(times),
         }
 
+        # serialize python object into JSON formatted string and convert into sequence of bytes using UTF-8 encoding
         return json.dumps(payload).encode("utf-8")
     
     # Dependency graph
@@ -277,3 +278,11 @@ class BEPParser:
             "has_resource_usage": len(self.resource_series) > 0,
         }
         return json.dumps(payload).encode("utf-8")
+    
+
+    def reset(self) -> None:
+        self.events = []
+        self.targets = {}
+        self.test_results = {}
+        self.action_count = 0
+        self.resource_series = []

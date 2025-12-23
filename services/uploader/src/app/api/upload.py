@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 import uuid
 
 # Import the celery_app instance from the main application file
-from app.celery_app import celery_app
+from app.celery_app import app
 from app.core.s3 import generate_presigned_post, object_exists, generate_presigned_get
 from app.core.config import settings
 from app.models.uploads import(
@@ -72,13 +72,15 @@ async def init_upload(req: InitUploadRequest):
     )
 
     #store metadata
-    create_upload_record(
+    createdRecord = create_upload_record(
         file_id=file_id,
         s3_key=s3_key,
         original_filename=req.filename,
         content_type = req.content_type,
         max_size = max_size,
         )
+    
+    
 
     return InitUploadResponse(
         file_id = file_id,
@@ -101,8 +103,8 @@ async def complete_upload(req: CompleteUploadRequest):
     # Update status and enqueue Celery job by sending a task by name
     # The task "src.tasks.tasks.process_bep_file" is discovered by the celery-worker.
     update_upload_status(req.file_id, UploadStatus.PROCESSING)
-    taskRes = celery_app.send_task(
-        "src.tasks.tasks.process_bep_file",
+    taskRes = app.send_task(
+        "process_bep_file",
         args=[req.file_id, record.s3_key],
     )
     print("the task id is : ", taskRes)   # debugging if the task was queued properly
@@ -140,8 +142,7 @@ async def get_artifact_urls(file_id: str):
     # processed/{file_id}/graph.json
     # processed/{file_id}/resource-usage.json
 
-    # currently the base url is hardcoded, should instead use the base location from the record itself
-    base = f"processed/{file_id}/"
+    base = record.output_json_url
 
     files = {
         "summary_url":base + "summary.json",
