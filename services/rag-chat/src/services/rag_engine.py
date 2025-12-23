@@ -134,4 +134,3 @@ class RAGEngine:
     def clear_session(self, session_id: str):
         if session_id in self.sessions:
             del self.sessions[session_id]
-

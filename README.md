@@ -100,6 +100,15 @@ npm run dev
 - **Real-time Monitoring**: Live build monitoring during execution
 
 
+#### Running local vector database
+```bash
+ docker run -d -p 8080:8080 `
+  -e QUERY_DEFAULTS_LIMIT=20 `
+  -e AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED=true `
+  semitechnologies/weaviate:latest
+```
+
+
 ## License
 
 MIT License - see LICENSE file for details.

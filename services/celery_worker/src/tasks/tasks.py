@@ -8,10 +8,18 @@ from src.core.config import settings
 from src.models.uploads import update_upload_status, UploadStatus
 from src.services.bep_parser import BEPParser
 
+from langchain_openai import OpenAIEmbeddings
+from langchain_community.vectorstores import Weaviate
+import weaviate
+
 os.environ['FORKED_BY_MULTIPROCESSING'] = '1'
 log = logging.getLogger(__name__)
 
 app = Celery("src", broker=settings.celery_broker_url, backend=settings.celery_result_backend)
+
+# embedding client and vector DB client (Weaviate)
+embedding_client = OpenAIEmbeddings(openai_api_key=settings.openai_api_key)
+weaviate_client = weaviate.Client("http://localhost:8080")
 
 
 _s3_client = boto3.client(
@@ -53,17 +61,9 @@ def process_bep_file(self, file_id: str, s3_key: str) -> None:
         
         parser.parse_stream(lines())
 
-
-        # RAG processing to be implemented.
-        # try:
-        #     if getattr(settings, "enable_rag_processing", True):
-        #         parser.rag_processor.process_bep_data(parser.events)
-        # except Exception as rag_error:
-        #     log.exception("RAG processing failed; continuing: %s", rag_error)
-
         
         # Build summary
-        # the export functions return bytes
+        # the export functions return bytes already
         processed_summary = parser.export_summary()
         processed_graph = parser.export_graph()
         processed_resource_usage = parser.export_resource_usage()
@@ -92,19 +92,50 @@ def process_bep_file(self, file_id: str, s3_key: str) -> None:
             ContentType = "application/json",
         )
 
+        # Embeddings processing
+        # for each, creating dictionaries
+        data_dicts = {
+            "summary" : json.loads(processed_summary),
+            "graph": json.loads(processed_graph),
+            "resource_usage": json.loads(processed_resource_usage),
+        }
+
+        for dtype, data in data_dicts.items():
+            # convert to JSON string, indent = 2 for pretty printing
+            text = json.dumps(data, indent = 2)
+            vector_obj = {
+                "text": text,
+                "file_id": file_id,
+                "type": dtype
+            }
+
+            weaviate_client.data_object.create(
+                data_object = vector_obj,
+                class_name = "Document",
+                vector = embedding_client.embed_query(text)
+            )
+
+            # saving embeddings to s3 for backup
+            _s3_client.put_object(
+                Bucket  = settings.s3_bucket,
+                Key = f"{base_key}embeddings/{dtype}.json",
+                Body = json.dumps(vector_obj),
+                ContentType = "application/json"
+            )
+
 
         update_upload_status(file_id, UploadStatus.COMPLETED, output_location=base_key)
         log.info("Processed BEP file %s -> %s", s3_key, base_key)
 
     except(BotoCoreError, ClientError) as s3_err:
-        log.exception("s3 error while processing %s", s3_key, s3_err)
+        log.exception("s3 error while processing %s -> %s", s3_key, s3_err)
         try:
             raise self.retry(exc=s3_err)
         except Exception:
-            update_upload_status(file_id, UploadStatus.FAILED, error_message=str(s3_err))
+            update_upload_status(file_id, UploadStatus.FAILED, output_location="", error_message=str(s3_err))
             raise
     
     except Exception as e:
-        log.exception("Fatal error processing %s", s3_key, e)
-        update_upload_status(file_id, UploadStatus.FAILED, error_message=str(e))
+        log.exception("Fatal error processing %s - > %s", s3_key, e)
+        update_upload_status(file_id, UploadStatus.FAILED, output_location="", error_message=str(e))
         raise
