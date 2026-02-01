@@ -1,6 +1,6 @@
 # Bazel ChatViz
 ### Making build analysis as easy as having a conversation.
- A distributed build analysis platform for processing Bazel Event Protocol(BEP) files and natural language queries for build performance analysis and debugging.
+A distributed developer productivity platform for analyzing Bazel build data to understand build performance, failures, and bottlenecks across large codebases.
 
 [comment]: # (https://github.com/user-attachments/assets/617d93b3-2322-4a0c-a770-49f3be662ace)
 
