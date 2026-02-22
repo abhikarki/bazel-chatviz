@@ -2,6 +2,8 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 import uuid
 
+import logging
+from opentelemetry import trace
 # Import the celery_app instance from the main application file
 from app.celery_app import app
 from app.core.s3 import generate_presigned_post, object_exists, generate_presigned_get
@@ -13,7 +15,11 @@ from app.models.uploads import(
     UploadStatus,
 )
 
+
 router = APIRouter(prefix="/upload", tags=["upload"])
+
+tracer = trace.get_tracer(__name__)
+logger = logging.getLogger(__name__)
 
 # Request and Response schemas
 
@@ -48,46 +54,58 @@ class ArtifactURLsResponse(BaseModel):
 
 @router.post("/init", response_model=InitUploadResponse, status_code=status.HTTP_201_CREATED)
 async def init_upload(req: InitUploadRequest):
-    # Some validation we perform
-    max_size = 20_000_000     # 20MB
-    if req.size > max_size:
-        raise HTTPException(status_code=413, detail="File too large")
-    
-    allowed_types = {"application/json", "application/octet-stream"}
-    if req.content_type not in allowed_types:
-        raise HTTPException(
-            status_code=415, detail=f"Unsupported content type: {req.content_type}"
+    with tracer.start_as_current_span("init_upload") as span:
+        #some attributes to the span 
+        span.set_attribute("upload.filename", req.filename)
+        span.set_attribute("upload.content_type", req.content_type)
+        span.set_attribute("upload.size_bytes", req.size)
+
+        logger.info(f"Upload initiated for file: {req.filename}, size: {req.size}")
+        # Some validation we perform
+        max_size = 20_000_000     # 20MB
+        if req.size > max_size:
+            span.set_attribute("error", True)
+            span.set_attribute("error.type", "File too large")
+            raise HTTPException(status_code=413, detail="File too large")
+        
+        allowed_types = {"application/json", "application/octet-stream"}
+        if req.content_type not in allowed_types:
+            span.set_attribute("error", True)
+            span.set_attribute("error.type", "unsupported content type")
+            raise HTTPException(
+                status_code=415, detail=f"Unsupported content type: {req.content_type}"
+            )
+        
+        file_id = uuid.uuid4().hex
+        span.set_attribute("upload.file_id", file_id)
+        # Late we can include user_id here once we set up the auth
+        # s3_key = f"bep-files/{user_id}/{file_id}.json"
+        s3_key = f"bep-files/{file_id}.json"
+
+        presigned = generate_presigned_post(
+            Key=s3_key,
+            content_type=req.content_type,
+            max_size=max_size,
+            expires_in=300,  #seconds
         )
-    
-    file_id = uuid.uuid4().hex
-    # Late we can include user_id here once we set up the auth
-    # s3_key = f"bep-files/{user_id}/{file_id}.json"
-    s3_key = f"bep-files/{file_id}.json"
 
-    presigned = generate_presigned_post(
-        Key=s3_key,
-        content_type=req.content_type,
-        max_size=max_size,
-        expires_in=300,  #seconds
-    )
+        #store metadata
+        createdRecord = create_upload_record(
+            file_id=file_id,
+            s3_key=s3_key,
+            original_filename=req.filename,
+            content_type = req.content_type,
+            max_size = max_size,
+            )
+        
+        logger.info(f"Upload initialized successfully: file_id = {file_id}")
 
-    #store metadata
-    createdRecord = create_upload_record(
-        file_id=file_id,
-        s3_key=s3_key,
-        original_filename=req.filename,
-        content_type = req.content_type,
-        max_size = max_size,
+        return InitUploadResponse(
+            file_id = file_id,
+            url = presigned["url"],
+            fields = presigned["fields"],
+            expires_in = 300,
         )
-    
-    
-
-    return InitUploadResponse(
-        file_id = file_id,
-        url = presigned["url"],
-        fields = presigned["fields"],
-        expires_in = 300,
-    )
 
 # when client says upload is done, we will assign Celery job
 @router.post("/complete", status_code=status.HTTP_202_ACCEPTED)

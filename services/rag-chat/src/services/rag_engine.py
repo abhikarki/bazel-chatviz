@@ -1,6 +1,10 @@
 import os
 import uuid
+import time
+import logging
 from typing import Optional, Dict, List
+
+from opentelemetry import trace
 
 from langchain_openai import ChatOpenAI
 from langchain_classic.memory import ConversationBufferWindowMemory
@@ -8,6 +12,10 @@ from langchain_classic.chains import ConversationalRetrievalChain
 from langchain_classic.schema import Document
 from langchain_community.vectorstores import Weaviate
 import weaviate
+
+tracer = trace.get_tracer(__name__)
+logger = logging.getLogger(__name__)
+
 
 class RAGEngine:
     def __init__(self):
@@ -29,48 +37,81 @@ class RAGEngine:
         return session_id, self.sessions[session_id]
     
     async def query(self, query: str, file_id: Optional[str], session_id: Optional[str]) -> dict:
-        session_id, memory = self._get_or_create_session(session_id)
+        with tracer.start_as_current_span("rag_query") as span:
+            span.set_attribute("query.text", query[:100])
+            span.set_attribute("query.file_id", file_id or "none")
 
-        # getting retriever for file
-        retriever = None
-        if file_id:
-            try:
-                vectorstore = Weaviate(
-                    client=self.weaviate_client,
-                    class_name="Document",
-                    text_key="text"
+            logger.info(f"Processing query: {query[:50]}...")
+
+            session_id, memory = self._get_or_create_session(session_id)
+            span.set_attribute("query.session_id", session_id)
+
+            # getting retriever for file
+            retriever = None
+            if file_id:
+                with tracer.start_as_current_span("vector_search") as search_span:
+                    search_start = time.time()
+                    try:
+                        vectorstore = Weaviate(
+                            client=self.weaviate_client,
+                            class_name="Document",
+                            text_key="text"
+                        )
+                        # Filter to only retrieve objects with the correct file_id
+                        retriever = vectorstore.as_retriever(
+                            search_kwargs={
+                                "k": 4,
+                                "filters": {
+                                    "file_id": file_id
+                                }
+                            }
+                        )
+                        search_span.set_attribute("vector_search.success", True)
+                    except Exception:
+                        search_span.set_attribute("vector_search.success", False)
+                        search_span.set_attribute("vector_search.error", str(e))
+                        retriever = None
+                    finally:
+                        search_duration = time.time() - search.start
+                        search_span.set_attribute("vector_search.duration_seconds", search_duration)
+
+
+            if not retriever:
+                with tracer.start_as_current_span("general_llm_query") as llm_span:
+                    llm_start = time.time()
+                    response = await self._general_query(query)
+                    llm_duration = time.time() - llm_start
+                    llm_span.set_attribute("llm.duration_second", llm_duration)
+                
+                return {"response": response, "sources": None, "session_id": session_id}
+            
+
+            with tracer.start_as_current_span("rag_chain_invoke") as chain_span:
+                chain_start = time.time()
+
+
+                chain = ConversationalRetrievalChain.from_llm(
+                    llm = self.llm,
+                    retriever = retriever,
+                    memory = memory,
+                    return_source_documents = True
                 )
-                # Filter to only retrieve objects with the correct file_id
-                retriever = vectorstore.as_retriever(
-                    search_kwargs={
-                        "k": 4,
-                        "filters": {
-                            "file_id": file_id
-                        }
-                    }
-                )
-            except Exception:
-                retriever = None
 
-        if not retriever:
-            response = await self._general_query(query)
-            return {"response": response, "sources": None, "session_id": session_id}
-        
-        chain = ConversationalRetrievalChain.from_llm(
-            llm = self.llm,
-            retriever = retriever,
-            memory = memory,
-            return_source_documents = True
-        )
+                result = chain.invoke({"question": query})
 
-        result = chain.invoke({"question": query})
-        sources = [doc.metadata.get("type") for doc in result.get("source_documents", [])]
+                chain_duration = time.time() - chain_start
+                chain_span.set_attribute("rag_chain.duration_second", chain_duration)
+                chain_span.set_attribute("rag_chain.source_count", len(result.get("source_documents", [])))
 
-        return {
-            "response": result["answer"],
-            "sources": list(set(sources)),
-            "session_id": session_id
-        }
+            sources = [doc.metadata.get("type") for doc in result.get("source_documents", [])]
+
+            logger.info(f"Query completed: session = {session_id}, sources = {len(sources)}")
+
+            return {
+                "response": result["answer"],
+                "sources": list(set(sources)),
+                "session_id": session_id
+            }
 
     async def _general_query(self, query: str) -> str:
         messages = [
